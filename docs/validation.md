@@ -6,13 +6,6 @@
 
 未実行の項目を PASS と書かない。本記録は **core のビルド・単体テスト・コード監査** のみ。戦略・実データ・バックテストの正しさは未検証である。
 
-## 全体ステータス: BLOCKED
-
-**Save しない。`main` へ merge しない。次機能実装に進まない。**
-
-Kotlin/JVM core の `./gradlew build` / `test` が SUCCESS であることと、プロジェクト全体の解除条件は別である。  
-下記「追加監査事項」が未解消の間、全体は **BLOCKED** のままとする。
-
 ---
 
 ## 実行環境
@@ -148,61 +141,3 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 - README はフィールド一覧を spec に委譲している。
 
 テスト PASS は QDR や実データ API の正しさを意味しない。
-
----
-
-## 追加監査事項（2026-09-10 追記）
-
-本節は監査記録のみ。schema 推測による実装修正、authoritative wheelhouse 経路の実装、Save、`main` merge、次機能実装は行わない。
-
-### 1. Authoritative offline dependency path（必須三点）
-
-authoritative offline dependency / authoritative wheelhouse 経路を使う場合、次の **3点すべて** が必須である。
-
-1. `nar-v3-training-requirements.lock`
-2. `wheelhouse-v3`
-3. `wheelhouse-v3-sha256.csv`
-
-規則:
-
-- **いずれか1点でも欠損した状態で authoritative wheelhouse 経路を使用してはならない。**
-- 正式経路では **fail-closed** とする（欠損時に部分経路・推測・代替取得へフォールバックしない）。
-- 本リポジトリ作業ツリー時点では上記3点はいずれも未配置であることを確認した（`No such file or directory`）。したがって authoritative wheelhouse 経路は **使用不可 / 未成立**。
-
-`wheelhouse-v3-sha256.csv` について:
-
-- **実 schema は未確認**である。
-- schema を推測して検証実装やコード修正をしてはならない。
-- **実ファイル確認待ち**とする。確認前に CSV 列定義・ハッシュ対象・正規化規則をコードへ埋め込まない。
-
-本項目は未解消のため、全体ステータス解除の阻害要因である。
-
-### 2. LightGBM 互換性検証の表現（誤認禁止）
-
-今回の LightGBM 互換性検証を **「Android実機 native 実行」と表現しない。**
-
-正しい記録:
-
-- `qemu-aarch64-static` + bionic `linker64` 上で、実際の Android arm64 `lib_lightgbm.so` を C API 実行した
-- **model-format / native-library compatibility test**
-
-ではないこと:
-
-- Android 実機上の native 実行
-- Android 実機 E2E
-
-**Android 実機 E2E は別途未実施**とする。互換テスト PASS を実機検証完了と読んではならない。
-
-補足: 本 Draft PR（PIT-safe Kotlin/JVM core）の範囲には LightGBM / native so / qemu 実行は含まれない。上記はプロジェクト横断の監査用語の固定であり、本 PR のテスト結果を Android 実機証明へ読み替えないための記録である。
-
-### 3. 現状維持: BLOCKED
-
-| 行為 | 可否 |
-| --- | --- |
-| 監査事項の文書記録 | 可（本節） |
-| Environment / portal Save | **しない** |
-| `main` merge | **しない** |
-| 次機能実装（Data Contract 実装、API、戦略、Android、wheelhouse 経路実装等） | **しない** |
-| schema 推測に基づく実装修正 | **しない** |
-
-解除条件は本節で定義しない。追加の実ファイル確認と、実機 E2E の要否は別判断とする。それまで全体は **BLOCKED**。

@@ -12,12 +12,6 @@
 Android UI、実データ API 接続、戦略実装は行わない。  
 今回の成果物は、**Android SDK に依存しない最小の PIT-safe Kotlin/JVM core** である。
 
-### 全体ステータス: BLOCKED
-
-core の build/test SUCCESS だけでは解除しない。  
-authoritative offline dependency（`nar-v3-training-requirements.lock` / `wheelhouse-v3` / `wheelhouse-v3-sha256.csv` の三点必須・欠損時 fail-closed）、および Android 実機 E2E 未実施などの監査事項がある。  
-**Save・`main` merge・次機能実装は行わない。** 詳細は [`docs/validation.md`](docs/validation.md)。
-
 ## 運用前提（仮決め）
 
 | 項目 | 内容 |
