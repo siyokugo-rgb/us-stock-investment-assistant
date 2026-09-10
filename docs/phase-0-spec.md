@@ -236,6 +236,8 @@ FundamentalSnapshot:
 3. **Security 横断突合** — CIK / Ticker / vendor id の衝突時にどう Fail-Closed するかの運用規則が未確定。自動解決はしないと決めただけである。
 4. **Corporate Action** — 分割、合併、Ticker 変更の完全な履歴モデルがない。Identifier 履歴はその入口に過ぎない。
 5. **Quality 未定義** — 銀行・証券・保険・REIT を含む評価式が無い。QDR は仮説のまま。
+6. **Authoritative offline dependency path 未成立** — `nar-v3-training-requirements.lock` / `wheelhouse-v3` / `wheelhouse-v3-sha256.csv` の3点すべてが必須。1点でも欠損なら authoritative wheelhouse 経路は使用禁止（fail-closed）。現状いずれも未配置。`wheelhouse-v3-sha256.csv` の実 schema は未確認のため推測実装禁止・実ファイル確認待ち。
+7. **Android 実機 E2E 未実施** — LightGBM 互換確認があっても、それは `qemu-aarch64-static` + bionic `linker64` 上での Android arm64 `lib_lightgbm.so` C API による model-format / native-library compatibility test に過ぎない。「Android実機 native 実行」と表現しない。実機 E2E は別途未実施。
 
 ### High
 
@@ -254,6 +256,11 @@ Android UI、HTTP、DB、戦略、バックテスト、ニュース、自動発�
 
 ## 8. 次工程
 
+### 現状: BLOCKED
+
+Save しない。`main` merge しない。次機能実装に進まない。  
+詳細は [`docs/validation.md`](validation.md) の「追加監査事項」および全体ステータス。
+
 テスト PASS は、戦略や実データ取得の正しさを証明しない。  
-次に進めるのは **Data Contract 設計**（情報源、フィールド意味、`knownAt` の根拠、Universe の PIT 履歴の要否）である。  
-実 API 接続や戦略実装はその後である。
+BLOCKED 解除後に進める候補は **Data Contract 設計**（情報源、フィールド意味、`knownAt` の根拠、Universe の PIT 履歴の要否）である。  
+実 API 接続や戦略実装、authoritative wheelhouse 経路の実装、Android 実機 E2E は、その後かつ各前提が揃ってからである。
