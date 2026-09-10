@@ -1,0 +1,12 @@
+.gradle/
+build/
+.kotlin/
+out/
+.idea/
+*.iml
+*.ipr
+*.iws
+local.properties
+*.class
+.DS_Store
+kotlin-js-store/
