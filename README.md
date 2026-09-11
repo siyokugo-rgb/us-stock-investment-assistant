@@ -82,8 +82,8 @@ Android UI、実データ API 接続、戦略実装は行わない。
 
 この2種類を混同しない。現在時刻や対象日の 00:00 を暗黙補完しない。
 
-詳細は [`docs/phase-0-spec.md`](docs/phase-0-spec.md)。
-
+詳細は [`docs/phase-0-spec.md`](docs/phase-0-spec.md)。  
+実データ接続前の Data Contract は [`docs/data-contract.md`](docs/data-contract.md)（取得可能データと、投資判断・バックテストへ使ってよいデータの区別を含む）。
 ## Survivorship Bias は未解決 Critical
 
 将来の Quality 候補 Universe は次の和集合を予定する。
@@ -168,3 +168,10 @@ JDK 17 が必要。Gradle Wrapper を使う。
 
 検証記録は [`docs/validation.md`](docs/validation.md)。  
 テストは現在時刻・乱数・外部 API に依存しない固定 fixture を使う。
+
+## Data Contract（次工程）
+
+Phase 0 core（`main` `8711a85`）の次は、外部 API 接続前に Data Contract を固定することである。  
+文書: [`docs/data-contract.md`](docs/data-contract.md)。
+
+本契約の作成は、実データ取得・実データでの PIT 成立・戦略の有効性を証明しない。
