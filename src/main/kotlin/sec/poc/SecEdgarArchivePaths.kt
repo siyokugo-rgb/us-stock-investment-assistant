@@ -6,8 +6,9 @@ package sec.poc
  * Post-EDGAR 7.0:
  * `/Archives/edgar/data/{issuerCikNoLeadingZeros}/{accessionNoDashes}/...`
  *
- * パス上の CIK は **subject issuer CIK**（submissions の会社 CIK）。
- * accession 先頭 10 桁（提出者 CIK）とは一致しない場合がある。
+ * パス上の CIK は **subject issuer / registrant CIK**（submissions の会社 CIK）。
+ * accession 先頭 10 桁の submitting (login) CIK とは一致しない場合がある
+ * （third-party filing agent の login CIK が prefix に現れるケースを含む）。
  */
 object SecEdgarArchivePaths {
     const val DEFAULT_WWW_BASE = "https://www.sec.gov"

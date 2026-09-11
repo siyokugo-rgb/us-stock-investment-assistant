@@ -65,6 +65,7 @@ data class SecAccessionFilingMeta(
 /**
  * original / amendment 関係。
  * form+reportDate 一致だけでは CONFIRMED にしない。
+ * accession 文字列の単独出現も CONFIRMED にしない（局所文脈の関係語が必要）。
  */
 enum class SecAmendmentRelationshipGrade {
     CONFIRMED,

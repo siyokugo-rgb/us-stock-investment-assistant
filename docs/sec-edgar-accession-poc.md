@@ -23,12 +23,12 @@ SEC EDGAR の**実データ**で次を確認する。
 
 - [Accessing EDGAR Data](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data)
   - Accession number は accepted submission に付与される一意識別子
-  - 先頭 10 桁は **submission を行った entity の CIK**（会社本人とは限らず、third-party filer があり得る）
+  - 先頭 10 桁は **submitting (login) CIK**（Issuer/registrant CIK と同一とは限らず、third-party filing agent があり得る）
   - Post-EDGAR 7.0 archive パス:
     - `/Archives/edgar/data/{issuerCikNoLeadingZeros}/{accessionWithoutDashes}/`
     - filing index: `{accession}-index.htm`（および `.html`）
     - complete submission text: `{accession}.txt`
-  - 例示パスでは subject company CIK と accession 先頭 CIK が一致しないケースが公式に示されている
+  - 例示パスでは subject company CIK と accession 先頭（login）CIK が一致しないケースが公式に示されている
 - [EDGAR Application Programming Interfaces](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)
   - submissions: `https://data.sec.gov/submissions/CIK##########.json`
 - Fair Access / 識別可能な User-Agent 必須
@@ -57,12 +57,12 @@ URL は推測だけで固定せず、公式記載と live archive 応答の両�
 | original と /A は別 accession | YES（`...-015711` vs `...-035325`） |
 | 同一 accession の後勝ち上書き | 拒否（`SecAccessionArtifactStore.put` Fail-Closed） |
 | accession を SecurityId / IssuerId の代わりに使う | 禁止（コード・文書で明示） |
-| accession 先頭 CIK | 両accessionとも `0001140361` |
-| issuer CIK | `0000320193` |
-| 先頭 CIK == issuer CIK | **false**（third-party filer） |
-| archive パス CIK | subject issuer `320193`（先頭ゼロ除去） |
+| accession 先頭 CIK | 両accessionとも `0001140361`（submitting/login CIK） |
+| issuer / registrant CIK | `0000320193`（Apple Inc. は SEC filing 上の Filer/registrant） |
+| 先頭 CIK == issuer CIK | **false**（accession prefix は third-party filing agent の login CIK） |
+| archive パス CIK | subject issuer `320193`（先頭ゼロ除去）。prefix CIK と混同禁止 |
 
-**結論:** accession 先頭 10 桁は submitting entity CIK であり、投資対象 Security / Issuer の恒久 ID ではない。
+**結論:** accession 先頭 10 桁は submitting (login) CIK であり、Issuer CIK / SecurityId ではない。registrant が Filer であることと login CIK を混同しない。
 
 ## 5. Artifact 取得結果（live）
 
@@ -111,11 +111,11 @@ historical `knownAt` とは別。acceptanceDateTime を CONFIRMED knownAt に昇
 
 判定定義:
 
-- **CONFIRMED**: filing 本文または SEC 一次情報から対象関係を明示確認できる（例: 相手 accession の明示）
-- **LIKELY**: form / reportDate / 文脈上は対応しそうだが直接証拠不足
+- **CONFIRMED**: original accession への参照と、amend / amends / amendment / original 等の関係表現が**同一の局所文脈**（±160 chars）で確認できる場合のみ。accession 文字列の単独出現は不足。
+- **LIKELY**: form / reportDate / filingDate 文言・Original Form 等の文脈上は対応しそうだが、局所文脈での accession+関係語は不足
 - **UNVERIFIED**: 対応関係を証明できない
 
-本 PoC の pair は **LIKELY**。LIKELY を CONFIRMED として扱わない。
+本 PoC の Apple pair は **LIKELY**（本文に `April 20, 2026` + Original/amends 文言。original accession の明示共起なし）。LIKELY を CONFIRMED として扱わない。
 
 ## 8. Provenance（最小）
 
@@ -158,8 +158,12 @@ mock / synthetic live fallback なし。
 7. failed fetch では fetchedAt を打刻しない
 8. original と amendment を別 accession として保持
 9. amendment が original を上書きしない
-10. relationship 証拠不足なら CONFIRMED にしない
+10. relationship: accession+関係語の局所共起が無ければ CONFIRMED にしない
 11. fetchedAt clock は response body 書き込み後のみ
+12. accession 単独出現（無関係参照）は CONFIRMED 禁止
+13. form/reportDate のみは CONFIRMED 禁止（UNVERIFIED）
+14. filingDate + original/amends 文言は LIKELY
+15. 証拠なしは UNVERIFIED
 
 既存テストも含め回帰確認済み。
 
@@ -176,17 +180,17 @@ mock / synthetic live fallback なし。
 
 ## 12. Data Contract 修正要否
 
-**今回必須修正なし。**  
-accession / archive artifact の保有単位と third-party filer 注意は本 PoC 文書で固定。  
-将来 Provider 本実装時に data-contract へ「accession = submission version id」「先頭 CIK ≠ SecurityId」を正式条項化するのが妥当。
+**今回必須修正なし（追記済み）。**  
+accession / archive artifact の保有単位と submitting (login) CIK ≠ Issuer/Security 規則は [`data-contract.md`](data-contract.md) の正式条項および本 PoC 文書で一致。  
+将来 Provider 本実装時も同条項を逸脱しない。
 
 ## 13. 残 Critical / High
 
 | 重要度 | 項目 |
 | --- | --- |
-| High | original↔amendment を CONFIRMED にするには、accession 明示または SEC 一次の対応表が必要 |
+| High | original↔amendment を CONFIRMED にするには、accession+関係語の局所共起または SEC 一次の対応表が必要 |
 | High | acceptanceDateTime は引き続き historical knownAt として不足（PR #4 結論を維持） |
-| High | third-party filer accession を Issuer/Security と混同しない運用ルールの本実装反映が未着手 |
+| High | submitting (login) CIK と Issuer/Security 混同防止の Provider 本実装反映が未着手 |
 | Medium | index.json 併記・exhibit 個別取得・履歴 submissions files 横断は未実施 |
 
 ## 14. 最終判定

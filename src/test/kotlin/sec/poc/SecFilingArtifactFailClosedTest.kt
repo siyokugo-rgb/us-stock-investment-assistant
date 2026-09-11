@@ -225,19 +225,9 @@ class SecFilingArtifactFailClosedTest {
     }
 
     @Test
-    fun relationshipWithoutDirectEvidenceIsNotConfirmed() {
+    fun relationshipConfirmedRequiresAccessionAndRelationInSameLocalContext() {
         val original = originalMeta()
         val amendment = amendmentMeta()
-        // Same reportDate + forms only — must not be CONFIRMED.
-        val weak =
-            SecAmendmentRelationshipAssessor.assess(
-                original = original,
-                amendment = amendment,
-                amendmentPrimaryText = "<html>Form 8-K/A report date April 17, 2026</html>",
-                amendmentCompleteText = completeSubmissionText(amendmentAccession.value),
-            )
-        assertNotEquals(SecAmendmentRelationshipGrade.CONFIRMED, weak.grade)
-
         val confirmed =
             SecAmendmentRelationshipAssessor.assess(
                 original = original,
@@ -247,7 +237,52 @@ class SecFilingArtifactFailClosedTest {
                 amendmentCompleteText = completeSubmissionText(amendmentAccession.value),
             )
         assertEquals(SecAmendmentRelationshipGrade.CONFIRMED, confirmed.grade)
+    }
 
+    @Test
+    fun relationshipAccessionStringAloneIsNotConfirmed() {
+        val original = originalMeta()
+        val amendment = amendmentMeta()
+        // Accession appears only as an unrelated cross-reference far from relation wording.
+        val unrelated =
+            """
+            <html>
+            <p>See also previously filed materials under accession ${originalAccession.value}
+            for exhibit logistics unrelated to this Form 8-K/A.</p>
+            ${"x".repeat(500)}
+            <p>This Amendment revises compensation disclosure.</p>
+            </html>
+            """.trimIndent()
+        val assessment =
+            SecAmendmentRelationshipAssessor.assess(
+                original = original,
+                amendment = amendment,
+                amendmentPrimaryText = unrelated,
+                amendmentCompleteText = completeSubmissionText(amendmentAccession.value),
+            )
+        assertNotEquals(SecAmendmentRelationshipGrade.CONFIRMED, assessment.grade)
+    }
+
+    @Test
+    fun relationshipSameFormAndReportDateAloneIsNotConfirmed() {
+        val original = originalMeta()
+        val amendment = amendmentMeta()
+        val assessment =
+            SecAmendmentRelationshipAssessor.assess(
+                original = original,
+                amendment = amendment,
+                amendmentPrimaryText = "<html>Form 8-K/A report date April 17, 2026</html>",
+                amendmentCompleteText = completeSubmissionText(amendmentAccession.value),
+            )
+        assertNotEquals(SecAmendmentRelationshipGrade.CONFIRMED, assessment.grade)
+        // Without filingDate phrase / original-amends wording → UNVERIFIED
+        assertEquals(SecAmendmentRelationshipGrade.UNVERIFIED, assessment.grade)
+    }
+
+    @Test
+    fun relationshipFilingDateAndOriginalWordingIsLikelyNotConfirmed() {
+        val original = originalMeta()
+        val amendment = amendmentMeta()
         val likely =
             SecAmendmentRelationshipAssessor.assess(
                 original = original,
@@ -257,6 +292,21 @@ class SecFilingArtifactFailClosedTest {
                 amendmentCompleteText = completeSubmissionText(amendmentAccession.value),
             )
         assertEquals(SecAmendmentRelationshipGrade.LIKELY, likely.grade)
+        assertNotEquals(SecAmendmentRelationshipGrade.CONFIRMED, likely.grade)
+    }
+
+    @Test
+    fun relationshipWithoutEvidenceIsUnverified() {
+        val original = originalMeta()
+        val amendment = amendmentMeta()
+        val assessment =
+            SecAmendmentRelationshipAssessor.assess(
+                original = original,
+                amendment = amendment,
+                amendmentPrimaryText = "<html>Generic 8-K/A body with no prior filing reference.</html>",
+                amendmentCompleteText = completeSubmissionText(amendmentAccession.value),
+            )
+        assertEquals(SecAmendmentRelationshipGrade.UNVERIFIED, assessment.grade)
     }
 
     @Test

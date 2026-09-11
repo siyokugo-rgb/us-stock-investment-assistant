@@ -194,10 +194,10 @@ object SecAmendmentRelationshipAssessor {
         DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US)
 
     /**
+     * CONFIRMED は「original accession 参照」と「amend / amendment / original 等の関係語」が
+     * 同一の局所 window に共存する場合のみ。accession 文字列の単独出現は CONFIRMED にしない。
      * form+/A と reportDate 一致だけでは CONFIRMED にしない。
-     * 本文に相手 accession が明示されていれば CONFIRMED。
-     * 日付参照など間接証拠のみなら LIKELY。
-     * それ以外は UNVERIFIED。
+     * 日付参照など間接証拠のみなら LIKELY。それ以外は UNVERIFIED。
      */
     fun assess(
         original: SecAccessionFilingMeta,
@@ -226,18 +226,30 @@ object SecAmendmentRelationshipAssessor {
         }
 
         val corpus = amendmentPrimaryText + "\n" + amendmentCompleteText
-        if (corpus.contains(original.accessionNumber.value)) {
-            notes.add(
-                "Amendment text explicitly cites original accession ${original.accessionNumber.value}",
-            )
-            return SecAmendmentRelationshipAssessment(
-                originalAccession = original.accessionNumber,
-                amendmentAccession = amendment.accessionNumber,
-                grade = SecAmendmentRelationshipGrade.CONFIRMED,
-                evidenceNotes = notes,
-            )
+        val originalAccession = original.accessionNumber.value
+        when (val local = findAccessionRelationInLocalContext(corpus, originalAccession)) {
+            is AccessionRelationHit.Confirmed -> {
+                notes.add(
+                    "Original accession ${originalAccession} co-occurs with relation wording " +
+                        "('${local.relationToken}') within ±${LOCAL_CONTEXT_CHARS} chars",
+                )
+                return SecAmendmentRelationshipAssessment(
+                    originalAccession = original.accessionNumber,
+                    amendmentAccession = amendment.accessionNumber,
+                    grade = SecAmendmentRelationshipGrade.CONFIRMED,
+                    evidenceNotes = notes,
+                )
+            }
+            is AccessionRelationHit.AccessionOnly -> {
+                notes.add(
+                    "Original accession ${originalAccession} appears without amend/original relation " +
+                        "wording in the same ±${LOCAL_CONTEXT_CHARS}-char window (not CONFIRMED)",
+                )
+            }
+            AccessionRelationHit.Absent -> {
+                notes.add("Amendment text does not cite original accession $originalAccession")
+            }
         }
-        notes.add("Amendment text does not cite original accession ${original.accessionNumber.value}")
 
         val likelySignals = mutableListOf<String>()
         if (original.filingDate != null) {
@@ -277,4 +289,44 @@ object SecAmendmentRelationshipAssessor {
             evidenceNotes = notes,
         )
     }
+
+    private sealed class AccessionRelationHit {
+        data class Confirmed(val relationToken: String) : AccessionRelationHit()
+
+        data object AccessionOnly : AccessionRelationHit()
+
+        data object Absent : AccessionRelationHit()
+    }
+
+    /**
+     * Fail-Closed local-context check: accession mention alone is insufficient.
+     * Require a relation token (amend/amends/amending/amendment/original) in the same window.
+     */
+    private fun findAccessionRelationInLocalContext(
+        corpus: String,
+        originalAccession: String,
+    ): AccessionRelationHit {
+        var searchFrom = 0
+        var sawAccession = false
+        while (true) {
+            val idx = corpus.indexOf(originalAccession, startIndex = searchFrom, ignoreCase = false)
+            if (idx < 0) break
+            sawAccession = true
+            val windowStart = (idx - LOCAL_CONTEXT_CHARS).coerceAtLeast(0)
+            val windowEnd =
+                (idx + originalAccession.length + LOCAL_CONTEXT_CHARS).coerceAtMost(corpus.length)
+            val window = corpus.substring(windowStart, windowEnd)
+            val token = RELATION_TOKEN.find(window)?.value
+            if (token != null) {
+                return AccessionRelationHit.Confirmed(token)
+            }
+            searchFrom = idx + originalAccession.length
+        }
+        return if (sawAccession) AccessionRelationHit.AccessionOnly else AccessionRelationHit.Absent
+    }
+
+    private const val LOCAL_CONTEXT_CHARS = 160
+
+    private val RELATION_TOKEN =
+        Regex("""(?i)\b(?:amends|amending|amendment|amend|original)\b""")
 }

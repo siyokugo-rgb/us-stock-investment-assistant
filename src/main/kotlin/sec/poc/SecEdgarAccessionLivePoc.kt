@@ -48,12 +48,14 @@ fun main() {
     printMeta("originalCandidate", originalMeta)
     printMeta("amendmentCandidate", amendmentMeta)
     println(
-        "submittingEntityCik(original)=${originalMeta.accessionNumber.submittingEntityCik.value} " +
-            "(issuerCik=${issuerCik.value}; equal=${originalMeta.accessionNumber.submittingEntityCik == issuerCik})",
+        "submittingLoginCik(original)=${originalMeta.accessionNumber.submittingEntityCik.value} " +
+            "(issuerRegistrantCik=${issuerCik.value}; equal=${originalMeta.accessionNumber.submittingEntityCik == issuerCik}; " +
+            "prefix may be third-party filing agent)",
     )
     println(
-        "submittingEntityCik(amendment)=${amendmentMeta.accessionNumber.submittingEntityCik.value} " +
-            "(issuerCik=${issuerCik.value}; equal=${amendmentMeta.accessionNumber.submittingEntityCik == issuerCik})",
+        "submittingLoginCik(amendment)=${amendmentMeta.accessionNumber.submittingEntityCik.value} " +
+            "(issuerRegistrantCik=${issuerCik.value}; equal=${amendmentMeta.accessionNumber.submittingEntityCik == issuerCik}; " +
+            "prefix may be third-party filing agent)",
     )
 
     val originalBundle = artifactClient.fetchBundle(originalMeta)

@@ -512,3 +512,18 @@ Critical / High の意味的バグとして、現行コードを直ちに壊す�
 - `filingDate` は日付のみ（PARTIAL）。`reportDate` は公開時刻ではない（UNUSABLE）。`fetchedAt`/`ingestedAt` は受信・parse・CIK一致成功直後の保有PITであり、historical knownAt 代理にしてはならない。
 - amendment（例: 8-K と 8-K/A）は別 accession / 別 acceptance として保持する。合成 amendment で PASS 扱いにしない。
 - submissions メタデータ取得成功 ≠ 財務値 PIT・価格 PIT・配当 PIT・戦略有効の証明。
+
+### SEC EDGAR accession / submission version 契約（正式）
+
+accession に関する一般規則（特定 issuer の実測値はハードコードしない）。詳細検証記録: [`sec-edgar-accession-poc.md`](sec-edgar-accession-poc.md)
+
+1. **`accessionNumber` は EDGAR submission version identifier** である。accepted submission に付与される提出版 ID として扱う。
+2. **original filing と amendment（`/A`）は別 accession として保持**する。版を潰して1件にまとめてはならない。
+3. **amendment 取得で original を上書きしてはならない。** 同一 accession への後勝ち上書きも禁止（Fail-Closed）。
+4. **accession 先頭 10 桁は submitting (login) CIK** である（SEC 公式の accession 構成）。
+5. **submitting (login) CIK は Issuer CIK / SecurityId と同一とは限らない。** registrant（Issuer）が SEC filing 上の Filer であることと、accession prefix の login/submitting CIK は別概念である。
+6. **third-party filing agent** 等が accession prefix に現れることがあり得る。prefix から Issuer / Security を推定してはならない。
+7. **archive path で用いる subject/filer（registrant）CIK と、accession prefix CIK を混同してはならない。** 前者は subject issuer 側パス、後者は login/submitting entity である。
+8. **original ↔ amendment の relationship が証明できない場合、CONFIRMED にしてはならない（Fail-Closed）。**  
+   CONFIRMED には、相手 accession への参照と amend / amendment / original 等の関係表現が**同一の局所文脈**で確認できることが必要。accession 文字列の単独出現や form+/A・reportDate 一致だけでは不足（LIKELY / UNVERIFIED）。
+9. accession を `SecurityId` / Issuer 恒久 ID の代わりに使ってはならない。

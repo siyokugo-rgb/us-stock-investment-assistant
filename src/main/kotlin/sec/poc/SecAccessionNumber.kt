@@ -1,11 +1,14 @@
 package sec.poc
 
 /**
- * EDGAR accession number（accepted submission の一意識別子）。
+ * EDGAR accession number（accepted submission の一意識別子 / submission version id）。
  *
- * 公式: 先頭 10 桁は **submission を行った entity の CIK** であり、
- * 投資対象 Security / Issuer の恒久 ID ではない（third-party filer があり得る）。
+ * 公式: 先頭 10 桁は **submitting (login) CIK** であり、
+ * Issuer CIK / SecurityId と同一とは限らない（third-party filing agent があり得る）。
+ * accession prefix から Issuer / Security を推定してはならない。
  * SecurityId / IssuerId の代わりに使ってはならない。
+ *
+ * 注: SEC filing 上の Filer（registrant）と、accession prefix の login/submitting CIK は別概念。
  */
 @JvmInline
 value class SecAccessionNumber private constructor(val value: String) {
@@ -15,7 +18,7 @@ value class SecAccessionNumber private constructor(val value: String) {
         }
     }
 
-    /** 先頭 10 桁 = submitting entity CIK（issuer CIK とは限らない）。 */
+    /** 先頭 10 桁 = submitting (login) CIK（Issuer CIK / registrant と同一とは限らない）。 */
     val submittingEntityCik: SecCik get() = SecCik.parse(value.substring(0, 10))
 
     val compactNoDashes: String get() = value.replace("-", "")
