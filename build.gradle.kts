@@ -50,3 +50,13 @@ tasks.register<JavaExec>("secEdgarAccessionPoc") {
     mainClass.set("sec.poc.SecEdgarAccessionLivePocKt")
     isIgnoreExitValue = false
 }
+
+// Live XBRL CompanyFacts PoC. Requires SEC_EDGAR_USER_AGENT. No mock fallback.
+tasks.register<JavaExec>("secCompanyFactsPoc") {
+    group = "verification"
+    description =
+        "Run live SEC XBRL CompanyFacts PoC (Fail-Closed; requires SEC_EDGAR_USER_AGENT; no SecurityId assignment)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("sec.poc.SecCompanyFactsLivePocKt")
+    isIgnoreExitValue = false
+}
