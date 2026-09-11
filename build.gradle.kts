@@ -31,3 +31,12 @@ tasks.test {
         showStandardStreams = false
     }
 }
+
+// Live SEC EDGAR PoC. Requires SEC_EDGAR_USER_AGENT. No mock fallback.
+tasks.register<JavaExec>("secEdgarPoc") {
+    group = "verification"
+    description = "Run live SEC EDGAR submissions metadata PoC (Fail-Closed; requires SEC_EDGAR_USER_AGENT)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("sec.poc.SecEdgarLivePocKt")
+    isIgnoreExitValue = false
+}

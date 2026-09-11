@@ -169,9 +169,10 @@ JDK 17 が必要。Gradle Wrapper を使う。
 検証記録は [`docs/validation.md`](docs/validation.md)。  
 テストは現在時刻・乱数・外部 API に依存しない固定 fixture を使う。
 
-## Data Contract（次工程）
+## Data Contract / SEC PoC
 
-Phase 0 core（`main` `8711a85`）の次は、外部 API 接続前に Data Contract を固定することである。  
-文書: [`docs/data-contract.md`](docs/data-contract.md)。
+- Data Contract: [`docs/data-contract.md`](docs/data-contract.md)
+- SEC EDGAR submissions metadata PoC: [`docs/sec-edgar-poc.md`](docs/sec-edgar-poc.md)
 
-本契約の作成は、実データ取得・実データでの PIT 成立・戦略の有効性を証明しない。
+Data Contract と SEC PoC は、実データ取得・財務/価格/配当 PIT 成立・戦略有効性を証明しない。  
+`acceptanceDateTime` は public availability の lower-bound evidence になり得るが、historical `knownAt` 単独使用は insufficient（conservative proxy ではない）。
