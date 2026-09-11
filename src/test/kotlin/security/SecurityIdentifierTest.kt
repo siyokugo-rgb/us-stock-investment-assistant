@@ -173,4 +173,20 @@ class SecurityIdentifierTest {
             SecurityId(" ")
         }
     }
+
+    @Test
+    fun securityIdentifierTypesAreTickerAndVendorPermanentIdOnly() {
+        assertEquals(
+            setOf(IdentifierType.TICKER, IdentifierType.VENDOR_PERMANENT_ID),
+            IdentifierType.entries.toSet(),
+        )
+        val vendor =
+            Fixtures.identifier(
+                type = IdentifierType.VENDOR_PERMANENT_ID,
+                value = "V-PERM-001",
+                validTo = null,
+            )
+        assertEquals(IdentifierType.VENDOR_PERMANENT_ID, vendor.type)
+        assertEquals(SEC_A, vendor.securityId)
+    }
 }

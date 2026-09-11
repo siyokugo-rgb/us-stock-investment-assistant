@@ -3,11 +3,10 @@ package security
 /**
  * Security 側の外部 identifier 種別。
  *
- * CIK は Issuer / filing-entity 側であり、新規には [issuer.IssuerIdentifierType.CIK] を使う。
- * 本 enum の [CIK] は後方互換のための残置であり、SecurityId 決定に使ってはならない。
+ * CIK は Issuer / filing-entity 側であり [issuer.IssuerIdentifierType.CIK] のみで扱う。
+ * SecurityIdentifier に CIK を載せる経路はない。
  */
 enum class IdentifierType {
     TICKER,
-    CIK,
     VENDOR_PERMANENT_ID,
 }

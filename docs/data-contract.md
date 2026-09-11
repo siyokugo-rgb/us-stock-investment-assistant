@@ -52,7 +52,9 @@ SEC / Tiingo / Yahoo 等の HTTP クライアント、DB、Android、戦略、�
 | Issuer↔Security | 明示 relation | `IssuerSecurityRelation` / `IssuerSecurityRelationIndex` |
 | Ticker | 取引所表示用の一時的シンボル | `IdentifierType.TICKER`（Security 側） |
 | Exchange | 上場市場（例: NYSE, NASDAQ） | **未モデル化**（識別子 value に埋め込まない） |
-| Vendor Permanent Identifier | ベンダー固有の恒久ID | `IdentifierType.VENDOR_PERMANENT_ID` |
+| Vendor Permanent Identifier | ベンダー固有の恒久ID | `IdentifierType.VENDOR_PERMANENT_ID`（Security 側） |
+
+`security.IdentifierType` に CIK は置かない。CIK を `SecurityIdentifier` へ載せる経路はない。
 
 ### 1.2 Issuer / Security / CIK の責務（正式）
 

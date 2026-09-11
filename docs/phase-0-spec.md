@@ -102,9 +102,8 @@ Ticker から導出しない内部識別子。同一銘柄の履歴は同一 `Se
 
 identifier type（最低限）:
 
-- `TICKER`
-- `CIK`
-- `VENDOR_PERMANENT_ID`
+- Security 側 `SecurityIdentifier`: `TICKER`, `VENDOR_PERMANENT_ID`
+- Issuer 側 `IssuerIdentifier`: `CIK`（10 桁ゼロ埋め。Security へ直結しない）
 
 ### 2.3 妥当期間
 
@@ -233,7 +232,7 @@ FundamentalSnapshot:
 
 1. **Survivorship Bias** — 候補 Universe の Point-in-Time 構成履歴がない。
 2. **Data Contract 未設計** — `knownAt` の根拠（開示時刻、ベンダー配信時刻、公式発表時刻）が未定義。モデルはあるが実データの正しさは未証明。
-3. **Security 横断突合** — CIK / Ticker / vendor id の衝突時にどう Fail-Closed するかの運用規則が未確定。自動解決はしないと決めただけである。
+3. **Security / Issuer 横断突合** — Ticker / vendor id / CIK（Issuer 側）の衝突時にどう Fail-Closed するかの運用規則が未確定。自動解決はしないと決めただけである。CIK は `IssuerIdentifier` のみ。
 4. **Corporate Action** — 分割、合併、Ticker 変更の完全な履歴モデルがない。Identifier 履歴はその入口に過ぎない。
 5. **Quality 未定義** — 銀行・証券・保険・REIT を含む評価式が無い。QDR は仮説のまま。
 
