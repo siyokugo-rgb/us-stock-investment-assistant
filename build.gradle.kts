@@ -40,3 +40,13 @@ tasks.register<JavaExec>("secEdgarPoc") {
     mainClass.set("sec.poc.SecEdgarLivePocKt")
     isIgnoreExitValue = false
 }
+
+// Live accession / archive artifact PoC. Requires SEC_EDGAR_USER_AGENT. No mock fallback.
+tasks.register<JavaExec>("secEdgarAccessionPoc") {
+    group = "verification"
+    description =
+        "Run live SEC EDGAR accession artifact PoC (index/primary/complete text; Fail-Closed; requires SEC_EDGAR_USER_AGENT)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("sec.poc.SecEdgarAccessionLivePocKt")
+    isIgnoreExitValue = false
+}
