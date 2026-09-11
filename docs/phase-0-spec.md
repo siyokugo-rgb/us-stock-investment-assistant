@@ -254,6 +254,9 @@ Android UI、HTTP、DB、戦略、バックテスト、ニュース、自動発�
 
 ## 8. 次工程
 
-テスト PASS は、戦略や実データ取得の正しさを証明しない。  
-次に進めるのは **Data Contract 設計**（情報源、フィールド意味、`knownAt` の根拠、Universe の PIT 履歴の要否）である。  
-実 API 接続や戦略実装はその後である。
+テスト PASS は、戦略や実データ取得の正しさを証明しない。
+
+Data Contract の設計文書は [`data-contract.md`](data-contract.md) へ移した（基準 `main` `8711a85`）。  
+当該文書は API 接続前の意味・PIT・同一性・品質境界の固定であり、実データ取得可能・PIT 成立・戦略有効の証明ではない。
+
+実 API 接続や戦略実装は、Data Contract を踏まえた Source PoC（推奨: SEC EDGAR 提出メタデータ）の後である。
