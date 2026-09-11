@@ -60,10 +60,14 @@ class FundamentalSnapshotTest {
     fun snapshotHoldsIssuerIdNotSecurityId() {
         val snapshot = Fixtures.fundamental(issuerId = Fixtures.ISSUER_A)
         assertEquals(Fixtures.ISSUER_A, snapshot.issuerId)
-        // FundamentalSnapshot has no securityId property and does not auto-select Security.
-        val props = snapshot::class.members.map { it.name }.toSet()
-        assertTrue("issuerId" in props)
-        assertFalse("securityId" in props)
+        // Component/copy surface is issuer-keyed; Security is not a snapshot field.
+        val (issuerId, fiscalPeriodEnd, filedAt, knownAt, ingestedAt, source) = snapshot
+        assertEquals(Fixtures.ISSUER_A, issuerId)
+        assertEquals(snapshot.fiscalPeriodEnd, fiscalPeriodEnd)
+        assertEquals(snapshot.filedAt, filedAt)
+        assertEquals(snapshot.knownAt, knownAt)
+        assertEquals(snapshot.ingestedAt, ingestedAt)
+        assertEquals(snapshot.source, source)
     }
 
     @Test

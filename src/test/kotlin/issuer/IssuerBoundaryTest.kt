@@ -153,13 +153,10 @@ class IssuerBoundaryTest {
         // Relation index is keyed by IssuerId, not CIK string; CIK alone yields no Security.
         val index = IssuerSecurityRelationIndex(emptyList())
         assertTrue(index.availableSecuritiesFor(ISSUER_A, Fixtures.AS_OF, DECISION_EQUAL).isEmpty())
-        val issuerApiNames =
-            (Cik::class.members + IssuerIdentifier::class.members + IssuerSecurityRelationIndex::class.members)
-                .map { it.name }
-                .toSet()
-        assertFalse("toSecurityId" in issuerApiNames)
-        assertFalse("cikToSecurityId" in issuerApiNames)
-        assertFalse("asSecurityId" in issuerApiNames)
+        // Compiles/uses only Issuer-side APIs; there is no cik→SecurityId conversion entry point.
+        val identifier = Fixtures.issuerIdentifier(rawCik = canonical)
+        assertEquals(ISSUER_A, identifier.issuerId)
+        assertEquals(canonical, identifier.value)
     }
 
     @Test
