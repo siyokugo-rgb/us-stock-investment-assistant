@@ -37,7 +37,7 @@ fun main() {
         val ev = result.evidence
         println("endpoint=${ev.endpoint}")
         println("httpStatus=${ev.httpStatus}")
-        println("fetchedAt=${ev.fetchedAt}")
+        println("fetchedAt=${ev.fetchedAt} // post-success ingestedAt equivalent; not historical knownAt")
         println("payloadBytes=${ev.payloadBytes}")
         println("payloadSha256=${ev.payloadSha256}")
         println("name=${doc.name}")
@@ -71,7 +71,7 @@ fun main() {
         }
 
         if (doc.tickers.size > 1) {
-            println("MULTI_SHARE_CLASS_OR_MULTI_TICKER_UNDER_SAME_CIK=true")
+            println("MULTIPLE_TICKER_OR_SECURITY_CANDIDATES_UNDER_SAME_CIK=true")
         }
     }
 }

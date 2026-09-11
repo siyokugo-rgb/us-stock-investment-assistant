@@ -107,12 +107,19 @@ class SecSubmissionsParserTest {
     }
 
     @Test
-    fun acceptanceDateTimeIsNotConfirmedKnownAt() {
+    fun acceptanceDateTimeIsPartialLowerBoundNotKnownAtProxy() {
         val assessment =
             SecSubmissionsParser.assessTimestampFields()
                 .first { it.field == "acceptanceDateTime" }
         assertEquals(PitEvidenceGrade.PARTIAL, assessment.gradeForHistoricalKnownAt)
         assertTrue(assessment.gradeForHistoricalKnownAt != PitEvidenceGrade.CONFIRMED)
+        assertTrue(assessment.notes.contains("lower-bound"), assessment.notes)
+        assertTrue(
+            assessment.notes.contains("PIT unsafe") || assessment.notes.contains("insufficient"),
+            assessment.notes,
+        )
+        assertTrue(assessment.notes.contains("conservative proxy とは呼ばない"), assessment.notes)
+        assertTrue(!assessment.notes.contains("conservative proxy 候補"), assessment.notes)
     }
 
     private fun readResource(path: String): String {

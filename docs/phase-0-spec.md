@@ -260,6 +260,6 @@ Data Contract の設計文書は [`data-contract.md`](data-contract.md)。
 SEC EDGAR submissions メタデータ PoC の実施記録は [`sec-edgar-poc.md`](sec-edgar-poc.md)。
 
 当該 PoC は提出メタデータの取得可能性と PIT 限界の観察であり、財務値 PIT・価格 PIT・配当 PIT・戦略有効性の証明ではない。  
-`acceptanceDateTime` を historical `knownAt` の CONFIRMED 根拠へ無条件固定してはならない（評価は PARTIAL）。
+`acceptanceDateTime` は public availability の lower-bound evidence にはなり得るが、historical `knownAt` 単独使用は PIT unsafe / insufficient（CONFIRMED ではない。conservative proxy と呼ばない）。
 
 実 API 本実装や戦略実装は、Data Contract と PoC で固定した限界を踏まえた後である。

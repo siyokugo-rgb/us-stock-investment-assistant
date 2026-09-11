@@ -74,7 +74,6 @@ class SecEdgarSubmissionsPocClient(
     fun fetchSubmissions(cik: SecCik): SecSubmissionsFetchResult {
         throttle()
         val endpoint = "${config.baseUrl.trimEnd('/')}/submissions/CIK${cik.value}.json"
-        val fetchedAt = clock()
         val request =
             HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))
@@ -115,6 +114,10 @@ class SecEdgarSubmissionsPocClient(
                 "CIK mismatch: requested ${cik.value}, payload ${document.cik.value}",
             )
         }
+
+        // ingestedAt / fetchedAt: only after body received, parsed, and CIK matched.
+        // Do not stamp possession before the payload is actually held successfully.
+        val fetchedAt = clock()
 
         return SecSubmissionsFetchResult(
             evidence =

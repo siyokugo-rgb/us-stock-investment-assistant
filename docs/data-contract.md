@@ -507,8 +507,8 @@ Critical / High の意味的バグとして、現行コードを直ちに壊す�
 
 実施記録: [`sec-edgar-poc.md`](sec-edgar-poc.md)
 
-- 同一 CIK に複数 Ticker / share class がぶら下がる（例: Alphabet）。**Issuer と Security の分離は実データ上必要。**
-- `acceptanceDateTime` は EDGAR acceptance 時刻であり、sec.gov 初回 public dissemination 時刻の CONFIRMED 根拠にはならない。historical `knownAt` 評価は **PARTIAL**。
-- `filingDate` は日付のみ（PARTIAL）。`reportDate` は公開時刻ではない（UNUSABLE）。`ingestedAt` を historical knownAt 代理にしてはならない。
+- 同一 CIK に複数 Ticker / security candidate がぶら下がる（例: Alphabet の `tickers` 配列）。**Issuer と Security の分離は実データ上必要。** 「配列内の全 Ticker が share class」とまでは、この PoC だけでは主張しない。
+- `acceptanceDateTime` は EDGAR acceptance 時刻。sec.gov public availability の **lower-bound evidence** にはなり得るが、historical `knownAt` としての単独使用は **PIT unsafe / insufficient**。CONFIRMED ではない。conservative proxy とは呼ばない。
+- `filingDate` は日付のみ（PARTIAL）。`reportDate` は公開時刻ではない（UNUSABLE）。`fetchedAt`/`ingestedAt` は受信・parse・CIK一致成功直後の保有PITであり、historical knownAt 代理にしてはならない。
 - amendment（例: 8-K と 8-K/A）は別 accession / 別 acceptance として保持する。合成 amendment で PASS 扱いにしない。
 - submissions メタデータ取得成功 ≠ 財務値 PIT・価格 PIT・配当 PIT・戦略有効の証明。

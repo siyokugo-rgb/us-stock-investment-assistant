@@ -54,8 +54,9 @@ PoC 実行時は 1 request / 秒以上の間隔を空けた。
 | MSFT | 200 | 184681 | `d68c1960bb0f6a4fb2cc10a93241fc410f971536577aa9ecc60f9409b68e24ec` |
 | Alphabet | 200 | 152715 | `d5c5ad376392b9d38a7d926506f1b0fd34c1c9e2757b97392c863ddaea70e225` |
 
-`ingestedAt` / `fetchedAt` は取得時刻（例: 2026-09-11T04:48:03Z 付近）。  
-これは historical `knownAt` ではない。
+`fetchedAt`（保有PITの `ingestedAt` 相当）は、HTTP 送信前ではなく、
+**response body 受信・parse・CIK 一致確認まで成功した直後**に記録する。
+historical `knownAt` ではない。
 
 User-Agent 未設定時の live タスクは失敗（exit != 0）。mock への自動切替なし。
 
@@ -103,18 +104,20 @@ recent は直近最大おおよそ 1000 件。それ以前は `files` 側。
 | --- | --- | --- |
 | `reportDate` | 報告対象期間・事象日 | **UNUSABLE** |
 | `filingDate` | 提出日（日付のみ） | **PARTIAL**（日境界まで。exact 時刻ではない） |
-| `acceptanceDateTime` | EDGAR acceptance 時刻 | **PARTIAL**（lower-bound / conservative proxy 候補。CONFIRMED ではない） |
-| `ingestedAt` / 取得時刻 | 本システムの取得時刻 | **UNUSABLE**（historical knowledge PIT 代理にしない） |
+| `acceptanceDateTime` | EDGAR acceptance 時刻 | **PARTIAL**（public availability の lower-bound evidence。historical knownAt 単独使用は PIT unsafe / insufficient。CONFIRMED ではない） |
+| `fetchedAt` / `ingestedAt` | payload 受信・parse・CIK一致成功直後（保有PIT） | **UNUSABLE**（historical knowledge PIT 代理にしない） |
 | sec.gov 初回 public dissemination | submissions JSON だけでは常時提供を確認できず | **UNVERIFIED** |
 
 ### acceptanceDateTime を CONFIRMED knownAt にしない理由
 
-1. 公式 API が返すのは acceptance であり、「sec.gov で最初に public に利用可能になった正確な timestamp」と同一であることの証明にはならない。  
-2. 古い history 行では `...T05:00:00.000Z` のように日付へ丸められた値が観察され、精度が一様でない。  
-3. 「API に日時がある」こと自体は PIT-safe の証明にならない。
+1. 公式 API が返すのは EDGAR acceptance であり、「sec.gov で最初に public に利用可能になった正確な timestamp」ではない。  
+2. filing は通常 acceptance 後に public になるため、acceptance は public availability の **lower-bound evidence** にはなり得る。  
+3. しかし historical `knownAt` として単独使用すると、実際より早く利用可能だった扱いになり得る（PIT unsafe / insufficient）。**conservative proxy ではない。**  
+4. 古い history 行では `...T05:00:00.000Z` のように日付へ丸められた値が観察され、精度が一様でない。  
+5. 「API に日時がある」こと自体は PIT-safe の証明にならない。
 
 **結論:** `acceptanceDateTime = knownAt` の無条件固定は禁止。  
-現状の正直な扱い: **PARTIAL（conservative lower-bound candidate）**。
+現状の正直な扱い: **PARTIAL = public-availability lower-bound evidence。historical knownAt 単独使用は insufficient。**
 
 ## 7. Amendment 確認
 
@@ -147,9 +150,14 @@ Alphabet（CIK `0001652044`）の実測:
 - `tickers`: `GOOGL`, `GOOG`, `GOOGM`, `GOOGN`
 - `exchanges`: いずれも Nasdaq（配列長は tickers と対応）
 
-**同一 CIK に複数 Ticker / share class 候補がぶら下がる。**  
-CIK は Issuer（提出主体）側であり、1 株式 Security と 1:1 ではない。
+解釈（この PoC の範囲）:
 
+- **同一 CIK に複数 Ticker / security candidate がぶら下がる**ことは確認できた。
+- `GOOGL` / `GOOG` は、一般に Class A / Class C 普通株として知られる share class 対応の候補だが、本 PoC は submissions の `tickers` 配列観察に限る。
+- `GOOGM` / `GOOGN` について、この PoC だけで share class だと確認していない。**multiple ticker / security candidates** として扱う。
+- したがって「全 Ticker = share class」とは主張しない。
+
+**CIK は Issuer（提出主体）側であり、1 株式 Security と 1:1 ではない。**  
 Data Contract の「Issuer と Security を分離すべき」は、実データ事実として支持される。  
 ただし本 PoC では `IssuerId` 実装は行わない（事実確定のみ）。
 
@@ -157,21 +165,22 @@ Data Contract の「Issuer と Security を分離すべき」は、実データ�
 
 確認した失敗経路:
 
+- HTTP 404 / 500 / empty body → 成功扱いにせず例外（local HttpServer fixture test。mock fallback なし）
+- 不正 CIK / malformed JSON / required field 欠損 → parser が例外（fixture test）
 - `SEC_EDGAR_USER_AGENT` 未設定 → live タスク失敗（成功扱いにしない）
 - placeholder User-Agent（`example.com` 等）→ 設定時点で拒否
-- 不正 CIK / malformed JSON / required field 欠損 → parser が例外（fixture test）
-- HTTP 4xx/5xx → 成功扱いにせず例外（mock fallback なし）
 
 ## 10. fixture test / live PoC / build
 
 | 区分 | 結果 |
 | --- | --- |
-| fixture unit tests（ネットワーク非依存） | PASS（`SecSubmissionsParserTest` 8 件を含む） |
-| live PoC | PASS（3 CIK とも HTTP 200、parse 成功、hash 記録） |
-| `./gradlew --no-daemon clean build` | PASS |
-| 全 test | **50 tests, 0 failures, 0 errors, 0 skipped** |
+| fixture unit tests（ネットワーク非依存） | PASS（parser 8 + HTTP fail-closed 4 を含む） |
+| live PoC（初回 PR 作成時） | PASS（3 CIK とも HTTP 200、parse 成功、hash 記録） |
+| live PoC（本 PIT/QA 最小修正コミット） | **今回未再実行** |
+| `./gradlew --no-daemon clean build` | PASS（本修正後） |
+| 全 test（本修正後） | **54 tests, 0 failures, 0 errors, 0 skipped** |
 
-fixture PASS と live PASS は区別して記録する。
+fixture PASS と live PASS は区別して記録する。過去の live 結果を今回の実行結果としては扱わない。
 
 ## 11. Data Contract との差異・修正要否
 

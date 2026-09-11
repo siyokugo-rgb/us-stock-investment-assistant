@@ -175,4 +175,4 @@ JDK 17 が必要。Gradle Wrapper を使う。
 - SEC EDGAR submissions metadata PoC: [`docs/sec-edgar-poc.md`](docs/sec-edgar-poc.md)
 
 Data Contract と SEC PoC は、実データ取得・財務/価格/配当 PIT 成立・戦略有効性を証明しない。  
-`acceptanceDateTime` を historical `knownAt` の CONFIRMED 根拠へ固定しない。
+`acceptanceDateTime` は public availability の lower-bound evidence になり得るが、historical `knownAt` 単独使用は insufficient（conservative proxy ではない）。

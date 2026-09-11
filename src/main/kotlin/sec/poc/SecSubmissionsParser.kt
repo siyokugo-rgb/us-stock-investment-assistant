@@ -61,15 +61,18 @@ object SecSubmissionsParser {
                 field = "acceptanceDateTime",
                 meaning = "EDGAR が filing を accept した時刻。",
                 gradeForHistoricalKnownAt = PitEvidenceGrade.PARTIAL,
-                notes = "acceptance は取得できるが、sec.gov で最初に public dissemination された正確な時刻と常に同一とは限らない。" +
-                    " lower-bound / conservative proxy 候補にはなり得るが、CONFIRMED knownAt へ無条件固定してはならない。" +
-                    " 古い行では日付のみを 05:00:00.000Z 等へ丸めた値も観察され、精度が一様でない。",
+                notes = "sec.gov 上の public availability に対する lower-bound evidence にはなり得る" +
+                    "（filing は通常 acceptance 後に public になる）。" +
+                    "ただし historical knownAt として単独使用すると、実際より早く利用可能だった扱いになり得るため PIT unsafe / insufficient。" +
+                    "CONFIRMED knownAt ではない。conservative proxy とは呼ばない。" +
+                    "古い行では日付のみを 05:00:00.000Z 等へ丸めた値も観察され、精度が一様でない。",
             ),
             SecTimestampAssessment(
                 field = "ingestedAt",
-                meaning = "本アプリが当該 payload を取得した時刻。",
+                meaning = "本アプリが当該 payload の受信・parse・CIK一致確認まで成功した直後の時刻（保有PIT）。",
                 gradeForHistoricalKnownAt = PitEvidenceGrade.UNUSABLE,
-                notes = "運用上の保有PITには使う。historical knowledge PIT の knownAt 代理には使わない。",
+                notes = "運用上の保有PITには使う。HTTP送信前やbody受信完了前の時刻ではない。" +
+                    "historical knowledge PIT の knownAt 代理には使わない。",
             ),
             SecTimestampAssessment(
                 field = "sec.gov first public dissemination",

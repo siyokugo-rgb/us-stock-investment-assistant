@@ -54,6 +54,11 @@ data class SecSubmissionsDocument(
 data class SecFetchEvidence(
     val endpoint: String,
     val httpStatus: Int,
+    /**
+     * 本システムが当該 payload を取得完了し、parse と CIK 一致確認まで成功した直後の時刻。
+     * 保有PITの ingestedAt 相当。HTTP 送信前や body 受信完了前の時刻ではない。
+     * historical knownAt ではない。
+     */
     val fetchedAt: Instant,
     val payloadSha256: String,
     val payloadBytes: Int,
