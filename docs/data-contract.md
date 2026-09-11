@@ -293,6 +293,31 @@ SEC XBRL CompanyFacts は Issuer / filing-entity 集約の一次候補ソース�
 - `FundamentalSnapshot` は `issuerId` を保持する（Issuer 側）。Security 固有処理には `IssuerSecurityRelation` 解決が必要
 - CompanyFacts → `FundamentalSnapshot` への数値本番 mapping・Provider 本実装はなお別工程（本境界修正だけでは有効化しない）
 
+### 4.5 Raw fact / normalized concept / version 候補境界（正式）
+
+CompanyFacts raw fact を将来の財務 metric へ安全に接続するための意味境界。実装: `RawFinancialFact`, `FactPeriod`, `NormalizedFinancialConcept`, `FinancialFactCandidateSet`。
+
+1. **raw fact と normalized concept を分離する。** raw は taxonomy / concept / unit / period / accession / value を保持する。`Map<String, BigDecimal>` への縮退は禁止。
+2. **raw fact は Issuer 側（`issuerId`）である。** `SecurityId` を持たせない。Security 解決は明示 relation のみ。
+3. **period identity は instant=`end`、duration=`start`+`end`。** fy / fp / frame は補助 metadata。fy/fp/frame だけで period を断定しない。annual/quarterly を fp 文字列だけで断定しない。
+4. **明示 mapping がある standard US-GAAP tag のみ normalized concept を付与する。** 未確認 tag・extension・企業固有 tag の推測 mapping 禁止。unmapped は null のまま（UNKNOWN へ丸めない）。
+5. **unit は raw fact identity の一部。** USD / shares / USD/shares / pure 等を勝手に変換・統合しない。同一 concept/period でも unit が違えば別候補。
+6. **同一 issuer / normalized concept / period に複数 accession があればすべて候補保持。** 同一値でも provenance（accession）が違えば削除しない。latest-wins 禁止。
+7. **amendment / restatement は candidate / unresolved に留める。** `/A` だから original を上書きしない。AMENDMENT ≠ authoritative replacement。
+8. **最終値 resolver は原則禁止。** 公開 API は `candidatesFor(...)` の候補集合。単一値が必要な上位層は、候補数=1 かつ concept/unit/period/version 意味が十分確定した場合のみ利用可。それ以外は Fail-Closed。
+9. **PIT: `filed` は historical knownAt ではない。** acceptanceDateTime も CONFIRMED knownAt ではない。raw fact から knownAt を生成する API を追加しない。現行 CompanyFacts state を過去へ遡及利用しない。historical PIT 不足 version を過去 decision に使わない。
+
+観察済み明示 mapping（これ以外を勝手に追加しない）:
+
+| normalized | raw taxonomy | raw concept |
+| --- | --- | --- |
+| REVENUE | us-gaap | `RevenueFromContractWithCustomerExcludingAssessedTax` |
+| REVENUE | us-gaap | `Revenues` |
+| NET_INCOME | us-gaap | `NetIncomeLoss` |
+| ASSETS | us-gaap | `Assets` |
+| LIABILITIES | us-gaap | `Liabilities` |
+| CASH_AND_CASH_EQUIVALENTS | us-gaap | `CashAndCashEquivalentsAtCarryingValue` |
+
 ---
 
 ## 5. Corporate Action Contract（設計のみ・完全実装しない）
