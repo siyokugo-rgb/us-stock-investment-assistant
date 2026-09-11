@@ -110,11 +110,12 @@ Path: `src/test/resources/dividend/poc/av-dividends-ibm-sanitized.json`
 | --- | --- | --- |
 | field absent | **Yes** → `null` | JSON schema allows omitting optional keys; parser treats missing key as absent |
 | JSON `null` | **Yes** → `null` | Standard JSON null; not a string sentinel |
-| string `"None"` | **Yes** → `null` | **Live IBM demo payload** (2026-09-11): 87/111 rows used exact `"None"` on declaration/record/payment. Official DIVIDENDS example uses the same field names; live is the primary string-sentinel evidence for this PoC |
+| string `"None"` | **Yes** → `null` | **Live IBM demo payload** (2026-09-11): 87/111 rows used **exact** `"None"` (`raw == "None"`, no surrounding whitespace) on declaration/record/payment. Whitespace-padded forms (`" None "`, `"\tNone"`, `"None\n"`) are **not** accepted |
 | empty string `""` | **No** (Fail-Closed) | Not observed in live IBM DIVIDENDS payload; not confirmed as provider absence |
 | string `"null"` | **No** (Fail-Closed) | Not observed in live IBM payload |
 | string `"N/A"` | **No** (Fail-Closed) | Not observed in live IBM payload |
 | string `"0000-00-00"` | **No** (Fail-Closed) | Not observed in live IBM payload |
+| padded `" None "` / `"\tNone"` / `"None\n"` | **No** (Fail-Closed) | Not exact `"None"`; treated as malformed date (no silent trim-to-sentinel) |
 
 Do **not** accept placeholders merely because they are “common elsewhere”. Unconfirmed strings must not be silently normalized to missing dates.
 
@@ -232,7 +233,7 @@ Failure paths never stamp fetchedAt. fetchedAt ≠ historical knownAt.
 ## 17. Fail-Closed coverage (local tests)
 
 Local HttpServer + synthetic sanitized fixture cover:
-valid parse, HTTP 4xx/5xx, empty body, malformed JSON, HTTP 200 Error/Information/Note, missing `data`, symbol mismatch, malformed ex/declaration/record/payment/amount, negative amount reject, zero kept, optional `"None"` / JSON null / field absent → null, unconfirmed sentinels (`N/A`, `0000-00-00`, empty, `"null"`) Fail-Closed, currency/type unresolved, knownAt not invented, no SecurityId conversion, duplicate rows not collapsed, fetchedAt only after success.
+valid parse, HTTP 4xx/5xx, empty body, malformed JSON, HTTP 200 Error/Information/Note, missing `data`, symbol mismatch, malformed ex/declaration/record/payment/amount, negative amount reject, zero kept, optional exact `"None"` / JSON null / field absent → null, unconfirmed sentinels (`N/A`, `0000-00-00`, empty, `"null"`, whitespace-padded `" None "`) Fail-Closed, currency/type unresolved, knownAt not invented, no SecurityId conversion, duplicate rows not collapsed, fetchedAt only after success.
 
 ## 18. Full history constraints
 

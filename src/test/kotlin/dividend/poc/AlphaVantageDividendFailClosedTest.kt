@@ -131,6 +131,32 @@ class AlphaVantageDividendFailClosedTest {
         assertNull(event.paymentDate)
         assertEquals("None", event.declarationDateRaw)
         assertTrue(AlphaVantageDividendParser.isAbsentSentinel("None"))
+        assertFalse(AlphaVantageDividendParser.isAbsentSentinel(" None "))
+        assertFalse(AlphaVantageDividendParser.isAbsentSentinel("\tNone"))
+        assertFalse(AlphaVantageDividendParser.isAbsentSentinel("None\n"))
+    }
+
+    @Test
+    fun whitespacePaddedNoneIsFailClosedForOptionalDates() {
+        // JSON string values with exact padding characters (escaped in source).
+        val paddedJsonValues =
+            listOf(
+                "\" None \"",
+                "\"\\tNone\"",
+                "\"None\\n\"",
+            )
+        val expectedRaws = listOf(" None ", "\tNone", "None\n")
+        for ((jsonValue, expectedRaw) in paddedJsonValues.zip(expectedRaws)) {
+            val ex =
+                assertFailsWith<AlphaVantageDividendPocException> {
+                    AlphaVantageDividendParser.parse(
+                        singleEventJson(declaration = jsonValue),
+                        requestedSymbol = "IBM",
+                    )
+                }
+            assertTrue(ex.message!!.contains("declaration_date"), ex.message)
+            assertFalse(AlphaVantageDividendParser.isAbsentSentinel(expectedRaw), expectedRaw)
+        }
     }
 
     @Test

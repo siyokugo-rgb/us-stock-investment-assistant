@@ -150,33 +150,35 @@ object AlphaVantageDividendParser {
     ): LocalDate? {
         // field absent / JSON null arrive as raw == null → LocalDate? null (no invention).
         if (raw == null) return null
-        val trimmed = raw.trim()
-        // Live IBM DIVIDENDS evidence: optional dates use the string sentinel "None".
-        if (isAbsentSentinel(trimmed)) {
+        // Live IBM DIVIDENDS evidence: optional dates use the exact string sentinel "None"
+        // (no leading/trailing whitespace). Do not trim before this check.
+        if (isAbsentSentinel(raw)) {
             return null
         }
-        // Unconfirmed placeholders (empty, "null", "N/A", "0000-00-00", etc.) are Fail-Closed:
-        // do not silently normalize unknown provider values into missing dates.
-        if (trimmed.isEmpty()) {
+        // Unconfirmed placeholders (empty, "null", "N/A", "0000-00-00", padded " None ", etc.)
+        // are Fail-Closed — do not silently normalize unknown provider values into missing dates.
+        if (raw.isEmpty()) {
             throw AlphaVantageDividendPocException(
                 "$context.$field empty string is not a confirmed DIVIDENDS absence sentinel",
             )
         }
         return try {
-            LocalDate.parse(trimmed)
+            // No trim: whitespace-padded values (including " None ") fail as malformed dates.
+            LocalDate.parse(raw)
         } catch (e: DateTimeParseException) {
             throw AlphaVantageDividendPocException("$context.$field malformed date: '$raw'", e)
         }
     }
 
     /**
-     * Confirmed DIVIDENDS optional-date absence sentinel from live IBM demo payload
-     * (and official sample shape using the same key set): exact string `"None"`.
+     * Confirmed DIVIDENDS optional-date absence sentinel from live IBM demo payload:
+     * exact string `"None"` only (`raw == "None"`, no trim).
      *
-     * Not accepted without primary evidence: empty string, `"null"`, `"N/A"`, `"0000-00-00"`.
+     * Not accepted without primary evidence: empty string, `"null"`, `"N/A"`, `"0000-00-00"`,
+     * or whitespace-padded forms such as `" None "`, `"\tNone"`, `"None\n"`.
      * Field absent / JSON null are handled separately (raw == null) and are not string sentinels.
      */
-    fun isAbsentSentinel(raw: String): Boolean = raw.trim() == "None"
+    fun isAbsentSentinel(raw: String): Boolean = raw == "None"
 
     private fun parseAmount(
         raw: String,
