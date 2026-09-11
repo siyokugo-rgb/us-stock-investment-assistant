@@ -119,6 +119,109 @@ class AlphaVantageDividendFailClosedTest {
     }
 
     @Test
+    fun confirmedNoneStringSentinelBecomesNullForOptionalDates() {
+        val series =
+            AlphaVantageDividendParser.parse(
+                singleEventJson(declaration = "\"None\"", record = "\"None\"", payment = "\"None\""),
+                requestedSymbol = "IBM",
+            )
+        val event = series.events.single()
+        assertNull(event.declarationDate)
+        assertNull(event.recordDate)
+        assertNull(event.paymentDate)
+        assertEquals("None", event.declarationDateRaw)
+        assertTrue(AlphaVantageDividendParser.isAbsentSentinel("None"))
+    }
+
+    @Test
+    fun jsonNullOptionalDatesBecomeNull() {
+        val series =
+            AlphaVantageDividendParser.parse(
+                singleEventJson(declaration = "null", record = "null", payment = "null"),
+                requestedSymbol = "IBM",
+            )
+        val event = series.events.single()
+        assertNull(event.declarationDate)
+        assertNull(event.recordDate)
+        assertNull(event.paymentDate)
+        assertNull(event.declarationDateRaw)
+    }
+
+    @Test
+    fun absentOptionalDateFieldsBecomeNull() {
+        val json =
+            """
+            {
+              "symbol": "IBM",
+              "data": [
+                {
+                  "ex_dividend_date": "2024-08-09",
+                  "amount": "1.67"
+                }
+              ]
+            }
+            """.trimIndent()
+        val series = AlphaVantageDividendParser.parse(json, requestedSymbol = "IBM")
+        val event = series.events.single()
+        assertNull(event.declarationDate)
+        assertNull(event.recordDate)
+        assertNull(event.paymentDate)
+        assertNull(event.declarationDateRaw)
+    }
+
+    @Test
+    fun unconfirmedNaSentinelIsFailClosed() {
+        val ex =
+            assertFailsWith<AlphaVantageDividendPocException> {
+                AlphaVantageDividendParser.parse(
+                    singleEventJson(declaration = "\"N/A\""),
+                    requestedSymbol = "IBM",
+                )
+            }
+        assertTrue(ex.message!!.contains("declaration_date"), ex.message)
+        assertFalse(AlphaVantageDividendParser.isAbsentSentinel("N/A"))
+    }
+
+    @Test
+    fun unconfirmedZeroDateSentinelIsFailClosed() {
+        val ex =
+            assertFailsWith<AlphaVantageDividendPocException> {
+                AlphaVantageDividendParser.parse(
+                    singleEventJson(record = "\"0000-00-00\""),
+                    requestedSymbol = "IBM",
+                )
+            }
+        assertTrue(ex.message!!.contains("record_date"), ex.message)
+        assertFalse(AlphaVantageDividendParser.isAbsentSentinel("0000-00-00"))
+    }
+
+    @Test
+    fun emptyStringOptionalDateIsFailClosed() {
+        val ex =
+            assertFailsWith<AlphaVantageDividendPocException> {
+                AlphaVantageDividendParser.parse(
+                    singleEventJson(payment = "\"\""),
+                    requestedSymbol = "IBM",
+                )
+            }
+        assertTrue(ex.message!!.contains("payment_date"), ex.message)
+        assertFalse(AlphaVantageDividendParser.isAbsentSentinel(""))
+    }
+
+    @Test
+    fun unconfirmedLiteralNullStringIsFailClosed() {
+        val ex =
+            assertFailsWith<AlphaVantageDividendPocException> {
+                AlphaVantageDividendParser.parse(
+                    singleEventJson(declaration = "\"null\""),
+                    requestedSymbol = "IBM",
+                )
+            }
+        assertTrue(ex.message!!.contains("declaration_date"), ex.message)
+        assertFalse(AlphaVantageDividendParser.isAbsentSentinel("null"))
+    }
+
+    @Test
     fun malformedJsonIsFailClosed() {
         val ex =
             assertFailsWith<AlphaVantageDividendPocException> {
@@ -381,4 +484,28 @@ class AlphaVantageDividendFailClosedTest {
     private fun readResource(path: String): String =
         javaClass.classLoader.getResourceAsStream(path)?.bufferedReader()?.readText()
             ?: error("Missing resource $path")
+
+    private fun singleEventJson(
+        declaration: String? = "\"2024-07-29\"",
+        record: String? = "\"2024-08-12\"",
+        payment: String? = "\"2024-09-10\"",
+    ): String {
+        val declarationLine = declaration?.let { """      "declaration_date": $it,""" }
+        val recordLine = record?.let { """      "record_date": $it,""" }
+        val paymentLine = payment?.let { """      "payment_date": $it,""" }
+        return buildString {
+            appendLine("{")
+            appendLine("""  "symbol": "IBM",""")
+            appendLine("""  "data": [""")
+            appendLine("    {")
+            appendLine("""      "ex_dividend_date": "2024-08-09",""")
+            if (declarationLine != null) appendLine(declarationLine)
+            if (recordLine != null) appendLine(recordLine)
+            if (paymentLine != null) appendLine(paymentLine)
+            appendLine("""      "amount": "1.67"""")
+            appendLine("    }")
+            appendLine("  ]")
+            append("}")
+        }
+    }
 }

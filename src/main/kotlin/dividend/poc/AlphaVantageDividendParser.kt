@@ -148,10 +148,19 @@ object AlphaVantageDividendParser {
         field: String,
         context: String,
     ): LocalDate? {
+        // field absent / JSON null arrive as raw == null → LocalDate? null (no invention).
         if (raw == null) return null
         val trimmed = raw.trim()
-        if (trimmed.isEmpty() || isAbsentSentinel(trimmed)) {
+        // Live IBM DIVIDENDS evidence: optional dates use the string sentinel "None".
+        if (isAbsentSentinel(trimmed)) {
             return null
+        }
+        // Unconfirmed placeholders (empty, "null", "N/A", "0000-00-00", etc.) are Fail-Closed:
+        // do not silently normalize unknown provider values into missing dates.
+        if (trimmed.isEmpty()) {
+            throw AlphaVantageDividendPocException(
+                "$context.$field empty string is not a confirmed DIVIDENDS absence sentinel",
+            )
         }
         return try {
             LocalDate.parse(trimmed)
@@ -160,14 +169,14 @@ object AlphaVantageDividendParser {
         }
     }
 
-    /** Provider-observed absences. Not converted into invented LocalDate. */
-    fun isAbsentSentinel(raw: String): Boolean {
-        val t = raw.trim()
-        return t.equals("None", ignoreCase = true) ||
-            t.equals("null", ignoreCase = true) ||
-            t.equals("N/A", ignoreCase = true) ||
-            t == "0000-00-00"
-    }
+    /**
+     * Confirmed DIVIDENDS optional-date absence sentinel from live IBM demo payload
+     * (and official sample shape using the same key set): exact string `"None"`.
+     *
+     * Not accepted without primary evidence: empty string, `"null"`, `"N/A"`, `"0000-00-00"`.
+     * Field absent / JSON null are handled separately (raw == null) and are not string sentinels.
+     */
+    fun isAbsentSentinel(raw: String): Boolean = raw.trim() == "None"
 
     private fun parseAmount(
         raw: String,
