@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 /**
  * Alpha Vantage TIME_SERIES_DAILY Fail-Closed / parse tests.
  * Local HttpServer + sanitized fixtures only. No live Alpha Vantage calls.
- * Does not invent historical knownAt. Does not assign SecurityId.
+ * Does not invent historical knownAt or currency. Does not assign SecurityId.
  */
 class AlphaVantageDailyFailClosedTest {
     private lateinit var server: HttpServer
@@ -98,6 +98,28 @@ class AlphaVantageDailyFailClosedTest {
         assertFalse(fieldNames.any { it.equals("securityId", ignoreCase = true) })
         val barFields = AlphaVantageDailyRawBar::class.java.declaredFields.map { it.name }.toSet()
         assertFalse(barFields.any { it.equals("securityId", ignoreCase = true) })
+    }
+
+    @Test
+    fun currencyRemainsUnresolvedAndIsNotInferredAsUsd() {
+        val series =
+            AlphaVantageDailyParser.parse(
+                readResource("market/poc/av-daily-ibm-sanitized.json"),
+                requestedSymbol = "IBM",
+            )
+        assertEquals(
+            CurrencyResolutionStatus.UNRESOLVED_FROM_TIME_SERIES_DAILY,
+            series.currencyResolutionStatus,
+        )
+        assertEquals(
+            HistoricalKnownAtStatus.UNRESOLVED_UNUSABLE,
+            series.historicalKnownAtStatus,
+        )
+        // Raw bar is OHLCV-only: open/high/low/close/volume + tradingDate + providerSymbol.
+        // No USD (or any currency) is auto-filled for DailyPrice mapping.
+        val sample = series.bars.first()
+        assertEquals("IBM", sample.providerSymbol)
+        assertTrue(sample.open.signum() >= 0)
     }
 
     @Test

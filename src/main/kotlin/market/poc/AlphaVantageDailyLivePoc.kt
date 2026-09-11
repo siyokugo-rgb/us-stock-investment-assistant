@@ -4,7 +4,7 @@ package market.poc
  * Live Alpha Vantage TIME_SERIES_DAILY PoC.
  *
  * Uses ALPHAVANTAGE_API_KEY when set; otherwise demo key.
- * Never prints the API key. Never invents historical knownAt. Never assigns SecurityId.
+ * Never prints the API key. Never invents historical knownAt / currency. Never assigns SecurityId.
  */
 fun main() {
     val keyPresent = !System.getenv(AlphaVantageDailyPocClient.ENV_API_KEY).isNullOrBlank()
@@ -15,8 +15,9 @@ fun main() {
     println("apiKeyPresent=$keyPresent")
     println("apiKeySource=${if (keyPresent) ApiKeySource.ENVIRONMENT else ApiKeySource.DEMO}")
     println("historicalKnownAtPolicy=UNRESOLVED_UNUSABLE_without_row_publication_timestamp")
+    println("currencyPolicy=UNRESOLVED_FROM_TIME_SERIES_DAILY_no_USD_inference")
     println("securityIdMapping=forbidden")
-    println("dailyPriceMapping=forbidden_without_historical_knownAt")
+    println("dailyPriceMapping=forbidden_without_knownAt_and_currency_evidence")
 
     val symbols =
         if (keyPresent) {
@@ -49,8 +50,10 @@ fun main() {
                     "l=${sample.low} c=${sample.close} v=${sample.volume}",
             )
             println("historicalKnownAtStatus=${series.historicalKnownAtStatus}")
+            println("currencyResolutionStatus=${series.currencyResolutionStatus}")
             println("mappedToDailyPrice=false")
             println("mappedToSecurityId=false")
+            println("currencyInferred=false")
             println("status=FETCH_PARSE_OK")
         } catch (e: AlphaVantagePocException) {
             println("status=FAIL_CLOSED")

@@ -9,6 +9,8 @@ import java.time.LocalDate
  *
  * - provider symbol を保持する。SecurityId は持たない／生成しない。
  * - historical knownAt は証明できないためフィールドを置かない（生成禁止）。
+ * - currency は TIME_SERIES_DAILY 応答に無い。USD 等を推測・補完しない。
+ * - [market.DailyPrice] への mapping は行わない。
  */
 data class AlphaVantageDailyRawBar(
     val providerSymbol: String,
@@ -49,10 +51,20 @@ enum class HistoricalKnownAtStatus {
 }
 
 /**
+ * TIME_SERIES_DAILY 単独では価格通貨を取得できない。
+ * ticker / timezone / 「US株らしい」見た目からの USD 推測は禁止。
+ */
+enum class CurrencyResolutionStatus {
+    UNRESOLVED_FROM_TIME_SERIES_DAILY,
+}
+
+/**
  * TIME_SERIES_DAILY 応答の PoC 表現。
  *
- * historicalKnownAtStatus は常に [HistoricalKnownAtStatus.UNRESOLVED_UNUSABLE]
- * （row 単位の publication timestamp が response に存在しない）。
+ * - historicalKnownAtStatus は常に [HistoricalKnownAtStatus.UNRESOLVED_UNUSABLE]
+ * - currencyResolutionStatus は常に [CurrencyResolutionStatus.UNRESOLVED_FROM_TIME_SERIES_DAILY]
+ *
+ * いずれも [market.DailyPrice] mapping の独立 blocker。
  */
 data class AlphaVantageDailyRawSeries(
     val providerSymbol: String,
@@ -63,6 +75,8 @@ data class AlphaVantageDailyRawSeries(
     val bars: List<AlphaVantageDailyRawBar>,
     val historicalKnownAtStatus: HistoricalKnownAtStatus =
         HistoricalKnownAtStatus.UNRESOLVED_UNUSABLE,
+    val currencyResolutionStatus: CurrencyResolutionStatus =
+        CurrencyResolutionStatus.UNRESOLVED_FROM_TIME_SERIES_DAILY,
 )
 
 enum class ApiKeySource {

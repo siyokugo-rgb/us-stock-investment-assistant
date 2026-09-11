@@ -5,6 +5,7 @@ Phase -1 Feasibility PoC for US equity **daily OHLCV** acquisition.
 This document is **not**:
 - proof of long-horizon price source adoption
 - proof that historical `knownAt` is solved
+- proof that `DailyPrice.currency` is solved from this endpoint alone
 - proof that backtests are valid
 - proof of strategy effectiveness
 
@@ -61,9 +62,11 @@ curl -sS 'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=IB
 
 Live Gradle PoC with absent key: **FAIL_CLOSED** for IBM/demo Information envelope (expected under current demo policy).
 
+**Live re-run after currency/provenance doc fix:** **not performed** (not required; prior Fail-Closed live result retained).
+
 ## 5. Raw JSON structure (official / sanitized fixture)
 
-Successful TIME_SERIES_DAILY shape (from official documentation examples; mirrored in sanitized fixture `src/test/resources/market/poc/av-daily-ibm-sanitized.json`):
+Successful TIME_SERIES_DAILY shape (from official documentation examples; mirrored in the **synthetic schema fixture** below):
 
 ```text
 Meta Data
@@ -83,6 +86,21 @@ Time Series (Daily)
 
 Values are JSON strings. Date keys are calendar dates (`YYYY-MM-DD`), not instants.
 
+**Currency field:** not present in this response shape.
+
+### 5.1 Fixture provenance (`av-daily-ibm-sanitized.json`)
+
+Path: `src/test/resources/market/poc/av-daily-ibm-sanitized.json`
+
+| Claim | Status |
+| --- | --- |
+| Purpose | unit / Fail-Closed schema fixture only |
+| Nature | **synthetic / sanitized schema fixture** |
+| Live Alpha Vantage payload? | **No** |
+| Treat numeric values as provider-measured evidence? | **No** |
+| Zero-price row | artificial QA case for existing Data Contract rule “keep raw zero; do not newly reject” |
+| Substitute for live success? | **No** |
+
 ## 6. Timezone
 
 Meta field `5. Time Zone` is present in official examples as `US/Eastern`.
@@ -90,6 +108,8 @@ Meta field `5. Time Zone` is present in official examples as `US/Eastern`.
 Interpretation retained as **provider metadata string**.
 
 We do **not** infer from that alone that every bar is the NYSE/Nasdaq regular-session official close. Alpha Vantage documents the series as raw as-traded daily OHLCV; it does not, in the Daily endpoint text reviewed here, provide a per-bar session stamp proving exclusive regular-hours composition.
+
+Timezone must **not** be used to infer price currency (e.g. US/Eastern → USD).
 
 ## 7. tradingDate evaluation
 
@@ -134,9 +154,26 @@ This PoC does **not** mix adjusted into raw bars. Adjusted live was not successf
 
 **Result: `HistoricalKnownAtStatus.UNRESOLVED_UNUSABLE`**
 
-Therefore live/historical rows are **not** mapped into existing `market.DailyPrice` (which requires `knownAt`).
+**Mapping blocker A (independent):** no mapping into `DailyPrice` while historical knownAt is unresolved.
 
-## 11. SecurityId mapping evaluation
+## 11. currency evaluation
+
+| Question | Finding |
+| --- | --- |
+| Does TIME_SERIES_DAILY return currency? | **No** (official shape / fixture: date + OHLCV only) |
+| Infer USD from providerSymbol looking “US-like”? | **Forbidden** |
+| Infer USD because symbol is AAPL/MSFT/GOOGL/IBM? | **Forbidden** |
+| Infer from symbol suffix / timezone / exchange guess? | **Forbidden** |
+| Separate currency source (e.g. SYMBOL_SEARCH)? | **Out of scope this PoC**; if ever used, requires its own source/provenance and identifier alignment |
+| Currency unresolved → map to DailyPrice? | **Forbidden** (Fail-Closed) |
+
+**Result: `CurrencyResolutionStatus.UNRESOLVED_FROM_TIME_SERIES_DAILY`**
+
+**Mapping blocker B (independent of knownAt):** `DailyPrice.currency` cannot be satisfied from TIME_SERIES_DAILY alone.
+
+PoC raw models do **not** auto-fill USD (or any currency). No `DailyPrice` mapper is provided.
+
+## 12. SecurityId mapping evaluation
 
 Provider symbol is an external identifier only.
 
@@ -144,7 +181,19 @@ Provider symbol is an external identifier only.
 - No ticker→SecurityId factory
 - Existing `SecurityIdentifier` boundary unchanged
 
-## 12. fetchedAt meaning
+**Mapping blocker C (independent):** SecurityId must not be invented from provider symbol.
+
+## 13. DailyPrice mapping blockers (summary)
+
+| Blocker | Status |
+| --- | --- |
+| historical knownAt | UNRESOLVED_UNUSABLE |
+| currency evidence | UNRESOLVED_FROM_TIME_SERIES_DAILY |
+| SecurityId | not derived from symbol |
+
+All three must remain Fail-Closed. Resolving one does not authorize `DailyPrice` creation.
+
+## 14. fetchedAt meaning
 
 Stamped only after:
 1. HTTP success
@@ -154,57 +203,65 @@ Stamped only after:
 
 Failure paths never stamp fetchedAt. fetchedAt ≠ historical knownAt.
 
-## 13. Fail-Closed coverage (local tests)
+## 15. Fail-Closed coverage (local tests)
 
-Local HttpServer + sanitized fixture cover:
-valid parse, malformed JSON, empty body, HTTP 4xx/5xx, HTTP 200 Error/Information/Note, missing time series, symbol mismatch, malformed OHLC, negative price/volume, high<low, open/close out of range, zero price kept, timezone retained, tradingDate retained, no SecurityId conversion, fetchedAt only after success, no fetchedAt on failure.
+Local HttpServer + synthetic sanitized fixture cover:
+valid parse, malformed JSON, empty body, HTTP 4xx/5xx, HTTP 200 Error/Information/Note, missing time series, symbol mismatch, malformed OHLC, negative price/volume, high<low, open/close out of range, zero price kept, timezone retained, tradingDate retained, no SecurityId conversion, currency unresolved (no USD inference), fetchedAt only after success, no fetchedAt on failure.
 
-## 14. Full history constraints
+## 16. Full history constraints
 
 Per official docs:
 - `outputsize=compact`: latest 100 points (free + premium)
 - `outputsize=full`: 20+ years; **premium**
 
-Even with full history, absence of per-row historical knownAt remains blocking for PIT-safe `DailyPrice` ingestion.
+Even with full history, absence of per-row historical knownAt **and** absence of currency in the daily response remain blocking for PIT-safe `DailyPrice` ingestion.
 
-## 15. License / terms
+## 17. License / terms
 
 Not fully audited here. Free key registration, rate limits, redistribution, and commercial terms require separate review before production adoption. Unconfirmed points remain open.
 
-## 16. Data Contract change needed?
+## 18. Data Contract change needed?
 
-**No code change to `DailyPrice` in this PoC.**
+**No code change to `DailyPrice` fields in this PoC.**
 
-Contract residual remains Critical: provider-proven historical `knownAt` for prices is still unsolved. Do not weaken `DailyPrice.knownAt` to optional just to ingest Alpha Vantage rows.
+Minimal contract reinforcement applied in `docs/data-contract.md` **§2.1.1**:
+- `DailyPrice.currency` requires explicit source evidence
+- no inference from ticker / provider symbol / exchange / timezone
+- if the price source lacks currency, a verified identifier/source join is required
+- unresolved currency → Fail-Closed (no `DailyPrice`)
 
-## 17. Remaining Critical / High
+Do **not** weaken `DailyPrice.knownAt` or `DailyPrice.currency` to optional just to ingest Alpha Vantage rows.
+
+## 19. Remaining Critical / High
 
 | Severity | Item |
 | --- | --- |
-| Critical | historical knownAt unusable for Alpha Vantage daily rows |
+| Critical | historical knownAt unusable for Alpha Vantage daily rows (**mapping blocker A**) |
+| Critical | TIME_SERIES_DAILY alone cannot supply `DailyPrice.currency`; USD inference forbidden (**mapping blocker B**) |
 | Critical | no successful live series without personal/premium API key in this environment |
 | High | `outputsize=full` premium gate for long history |
 | High | regular-session exclusivity not provider-proven from Daily endpoint text alone |
 | High | adjusted endpoint premium / unavailable under demo |
 | High | license/redistribution terms not fully reviewed |
+| High | any future currency join needs separate source/provenance + identifier alignment (SYMBOL_SEARCH etc. not implemented here) |
 
-## 18. Verdicts
+## 20. Verdicts
 
 | Lens | Verdict | Reason |
 | --- | --- | --- |
-| SE | PARTIAL | Boundary design sound; live readiness blocked by key + knownAt |
-| Programmer | PASS | Minimal PoC client/parser/tests; no over-abstraction |
-| Data Integrity | PARTIAL | Raw/adjusted separated; knownAt not invented; no SecurityId guess |
-| QA | PASS | Local Fail-Closed suite + live Fail-Closed recorded separately |
+| SE | PARTIAL | Boundary design sound; live readiness blocked by key + knownAt + currency |
+| Programmer | PASS | Minimal PoC client/parser/tests; no over-abstraction; no DailyPrice mapper |
+| Data Integrity | PARTIAL | Raw/adjusted separated; knownAt/currency not invented; no SecurityId guess |
+| QA | PASS | Local Fail-Closed suite + live Fail-Closed recorded separately; fixture not treated as live proof |
 
-**Overall: PARTIAL (Fail-Closed live without key; fixture path green)**
+**Overall: PARTIAL (Fail-Closed live without key; fixture path green; DailyPrice mapping blocked)**
 
-Acquisition success alone is not PASS. This PoC does **not** establish long-horizon source adoption, knownAt resolution, backtest validity, or strategy validity.
+Acquisition success alone is not PASS. This PoC does **not** establish long-horizon source adoption, knownAt resolution, currency resolution, backtest validity, or strategy validity.
 
-## 19. Next step?
+## 21. Next step?
 
 Conditional only:
 1. Re-run live with `ALPHAVANTAGE_API_KEY` (still without mapping to `DailyPrice`)
-2. Or evaluate a provider that exposes defendable historical publication timestamps
+2. Or evaluate a provider that exposes defendable historical publication timestamps **and** currency evidence (or a verified join path)
 
-Do **not** proceed to Quality / ROIC / FCF / QDR / Backtest / adjusted execution prices from this PoC alone.
+Do **not** proceed to Quality / ROIC / FCF / QDR / Backtest / adjusted execution prices / SYMBOL_SEARCH currency join from this PoC alone.
