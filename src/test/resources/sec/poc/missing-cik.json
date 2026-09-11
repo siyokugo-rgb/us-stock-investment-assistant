@@ -1,0 +1,23 @@
+{
+  "name": "X",
+  "tickers": [
+    "X"
+  ],
+  "exchanges": [
+    "N"
+  ],
+  "filings": {
+    "recent": {
+      "accessionNumber": [],
+      "filingDate": [],
+      "reportDate": [],
+      "acceptanceDateTime": [],
+      "form": [],
+      "primaryDocument": [],
+      "primaryDocDescription": [],
+      "isXBRL": [],
+      "isInlineXBRL": []
+    },
+    "files": []
+  }
+}

@@ -502,3 +502,13 @@ Critical / High の意味的バグとして、現行コードを直ちに壊す�
 理由: 一次情報に近く、amendment と as-reported の版管理を先に検証できる。価格・Universe はライセンスと `knownAt` 根拠が揃ってから。
 
 価格 PoC を併せる場合も、Yahoo Finance を権威源にしない。adjusted を執行価格に使わない。取得失敗時の mock fallback 禁止。
+
+### SEC EDGAR submissions PoC で確定した限界（2026-09-11）
+
+実施記録: [`sec-edgar-poc.md`](sec-edgar-poc.md)
+
+- 同一 CIK に複数 Ticker / share class がぶら下がる（例: Alphabet）。**Issuer と Security の分離は実データ上必要。**
+- `acceptanceDateTime` は EDGAR acceptance 時刻であり、sec.gov 初回 public dissemination 時刻の CONFIRMED 根拠にはならない。historical `knownAt` 評価は **PARTIAL**。
+- `filingDate` は日付のみ（PARTIAL）。`reportDate` は公開時刻ではない（UNUSABLE）。`ingestedAt` を historical knownAt 代理にしてはならない。
+- amendment（例: 8-K と 8-K/A）は別 accession / 別 acceptance として保持する。合成 amendment で PASS 扱いにしない。
+- submissions メタデータ取得成功 ≠ 財務値 PIT・価格 PIT・配当 PIT・戦略有効の証明。

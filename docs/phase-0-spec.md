@@ -256,7 +256,10 @@ Android UI、HTTP、DB、戦略、バックテスト、ニュース、自動発�
 
 テスト PASS は、戦略や実データ取得の正しさを証明しない。
 
-Data Contract の設計文書は [`data-contract.md`](data-contract.md) へ移した（基準 `main` `8711a85`）。  
-当該文書は API 接続前の意味・PIT・同一性・品質境界の固定であり、実データ取得可能・PIT 成立・戦略有効の証明ではない。
+Data Contract の設計文書は [`data-contract.md`](data-contract.md)。  
+SEC EDGAR submissions メタデータ PoC の実施記録は [`sec-edgar-poc.md`](sec-edgar-poc.md)。
 
-実 API 接続や戦略実装は、Data Contract を踏まえた Source PoC（推奨: SEC EDGAR 提出メタデータ）の後である。
+当該 PoC は提出メタデータの取得可能性と PIT 限界の観察であり、財務値 PIT・価格 PIT・配当 PIT・戦略有効性の証明ではない。  
+`acceptanceDateTime` を historical `knownAt` の CONFIRMED 根拠へ無条件固定してはならない（評価は PARTIAL）。
+
+実 API 本実装や戦略実装は、Data Contract と PoC で固定した限界を踏まえた後である。
