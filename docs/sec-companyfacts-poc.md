@@ -175,16 +175,11 @@ Microsoft / Alphabet では同一値の 10-K と 8-K 再掲（frame 有無差）
 - Alphabet のように同一 CIK に複数 ticker/share-class 候補がある Issuer では、Security 直結は特に危険
 - `IssuerId` 本実装は今回禁止（必要性は高いが未実装）
 
-## 13. Data Contract 修正要否
+## 13. Data Contract 反映
 
-**今回必須の大規模改訂は不要。**  
-ただし次を追記候補（別 PR でも可）とする:
+上記一般規則は [`data-contract.md`](data-contract.md) の **「SEC XBRL CompanyFacts 契約（正式）」** および §4.4 に正式反映済み。
 
-- CompanyFacts は Issuer/filing-entity 集約であり Security 直結禁止
-- fact version は accession 付き候補集合として保持
-- `filed` は knownAt にしない
-
-本 PoC 文書を Source of Truth の検証記録とする。
+本 PoC 文書は Source of Truth の**検証記録**であり、契約本文は `data-contract.md` を正とする。特定 issuer の固有件数・固有 tag 実測は契約へハードコードしない。
 
 ## 14. Fail-Closed
 
@@ -214,6 +209,8 @@ Microsoft / Alphabet では同一値の 10-K と 8-K 再掲（frame 有無差）
 10. failure 時 fetchedAt 非打刻
 11. 成功時 body/parse/CIK 後に fetchedAt
 12. SecurityId 自動割当しない（モデル責務）
+13. concept `units` 欠損 → Fail-Closed（fetchedAt 非打刻）
+14. `facts` 空 → Fail-Closed
 
 ## 16. 未解決 / 残 Critical・High
 

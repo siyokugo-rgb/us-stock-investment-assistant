@@ -255,6 +255,15 @@ Revenue / FCF / Debt / ROIC 等を追加するときは、少なくとも次を�
 
 **意味未定義の `Map<String, BigDecimal>` は禁止**（現行どおり）。
 
+### 4.4 CompanyFacts と FundamentalSnapshot の境界
+
+SEC XBRL CompanyFacts は Issuer / filing-entity 集約の一次候補ソースである。詳細規則は §14「SEC XBRL CompanyFacts 契約（正式）」および [`sec-companyfacts-poc.md`](sec-companyfacts-poc.md)。
+
+- CompanyFacts → `SecurityId` 直結禁止
+- fact version は `accn` 付き候補集合として保持（潰さない / 最新自動採用禁止）
+- `filed` を historical `knownAt` にしない
+- `FundamentalSnapshot` 本番 mapping は Issuer 境界確定後まで禁止
+
 ---
 
 ## 5. Corporate Action Contract（設計のみ・完全実装しない）
@@ -527,3 +536,19 @@ accession に関する一般規則（特定 issuer の実測値はハードコ�
 8. **original ↔ amendment の relationship が証明できない場合、CONFIRMED にしてはならない（Fail-Closed）。**  
    CONFIRMED には、相手 accession への参照と amend / amendment / original 等の関係表現が**同一の局所文脈**で確認できることが必要。accession 文字列の単独出現や form+/A・reportDate 一致だけでは不足（LIKELY / UNVERIFIED）。
 9. accession を `SecurityId` / Issuer 恒久 ID の代わりに使ってはならない。
+
+### SEC XBRL CompanyFacts 契約（正式）
+
+CompanyFacts / SEC XBRL に関する一般規則（特定 issuer・固有 concept 件数はハードコードしない）。検証記録: [`sec-companyfacts-poc.md`](sec-companyfacts-poc.md)
+
+1. **CompanyFacts は CIK / Issuer / filing-entity 側の集約**である。`SecurityId` へ直接割り当ててはならない。同一 CIK に複数 ticker / share-class 候補があり得るため、Issuer 境界が確定するまで Security 直結は禁止。
+2. **CompanyFacts の fact version は accession（`accn`）を含む候補版**として扱う。accession は provenance / submission version への追跡キーであり、Security や Issuer の恒久 ID ではない。
+3. **同一 concept / period に複数 accession（または複数 form / frame / unit）が存在しても潰してはならない。** 候補集合として保持する。
+4. **最新配列要素・最新 `filed`・最新 accession の自動採用は禁止**する。amendment / restatement / later corrected の確定ラベルも、本契約だけでは自動付与しない。
+5. **`filed` は filing 日付であり、historical `knownAt` として使用禁止**（UNUSABLE）。「現在 CompanyFacts に値がある」≠「過去 `decisionAt` 時点でその値を知っていた」。
+6. **historical PIT 判定には accession metadata（および必要なら filing artifact）への join が必要**である。CompanyFacts 単独では過去 decisionAt 判定に不足する。
+7. **join 後に得られる `acceptanceDateTime` も、既存 submissions / accession 契約どおり CONFIRMED `knownAt` ではない。** lower-bound evidence 候補にとどめ、CONFIRMED 扱いにしない。
+8. **`accn` 欠損時は version を推測結合しない**（Fail-Closed）。欠落 accession を invent して submissions / archive へつないではならない。
+9. **taxonomy / concept / unit / start / end / fy / fp / form / frame 等の意味を保持してから正規化する。** 欠落し得るフィールドを勝手に補完しない。unit 違いは別候補として保持し、自動統合しない。
+10. **CompanyFacts に concept / period が存在しないことを、「当該 filing に開示がない」と即断してはならない。** taxonomy 差・tag 選定・XBRL 抽出範囲・API 集約の限界があり得る。
+11. **`FundamentalSnapshot` への本番 mapping は Issuer 境界確定後まで禁止**する。本契約は Feasibility / 版候補保持の境界を固定するものであり、数値メトリクス完成・Quality / QDR / Backtest 有効の証明ではない。

@@ -241,6 +241,56 @@ class SecCompanyFactsFailClosedTest {
         assertTrue(doc.concepts.all { c -> c.tag.isNotBlank() && c.allVersions.all { it.unit.isNotBlank() } })
     }
 
+    @Test
+    fun conceptMissingUnitsIsFailClosedAndDoesNotStampFetchedAt() {
+        val json =
+            """
+            {
+              "cik": 320193,
+              "entityName": "Apple Inc.",
+              "facts": {
+                "us-gaap": {
+                  "Assets": {
+                    "label": "Assets"
+                  }
+                }
+              }
+            }
+            """.trimIndent()
+        val parseEx =
+            assertFailsWith<SecEdgarPocException> {
+                SecCompanyFactsParser.parse(json)
+            }
+        assertTrue(parseEx.message!!.contains("units"), parseEx.message)
+
+        mountBody(json)
+        val clockCalls = AtomicInteger(0)
+        val fetchEx =
+            assertFailsWith<SecEdgarPocException> {
+                client(clockCalls).fetchCompanyFacts(SecCik.parse("0000320193"), retainTags = null)
+            }
+        assertTrue(fetchEx.message!!.contains("units"), fetchEx.message)
+        assertEquals(0, clockCalls.get())
+    }
+
+    @Test
+    fun emptyFactsObjectIsFailClosed() {
+        val json =
+            """
+            {
+              "cik": 320193,
+              "entityName": "Apple Inc.",
+              "facts": {}
+            }
+            """.trimIndent()
+        val ex =
+            assertFailsWith<SecEdgarPocException> {
+                SecCompanyFactsParser.parse(json)
+            }
+        assertTrue(ex.message!!.contains("facts"), ex.message)
+        assertTrue(ex.message!!.contains("empty"), ex.message)
+    }
+
     private fun mountBody(body: String) {
         val bytes = body.toByteArray(StandardCharsets.UTF_8)
         server.createContext("/api/xbrl/companyfacts/CIK0000320193.json") { exchange ->
