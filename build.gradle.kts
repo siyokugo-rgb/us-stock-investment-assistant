@@ -70,3 +70,13 @@ tasks.register<JavaExec>("alphaVantageDailyPoc") {
     mainClass.set("market.poc.AlphaVantageDailyLivePocKt")
     isIgnoreExitValue = false
 }
+
+// Live Alpha Vantage dividends PoC. Uses ALPHAVANTAGE_API_KEY or demo. No mock fallback.
+tasks.register<JavaExec>("alphaVantageDividendPoc") {
+    group = "verification"
+    description =
+        "Run live Alpha Vantage DIVIDENDS PoC (Fail-Closed; no SecurityId; no knownAt/currency/REGULAR invention)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dividend.poc.AlphaVantageDividendLivePocKt")
+    isIgnoreExitValue = false
+}
