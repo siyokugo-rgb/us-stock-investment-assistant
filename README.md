@@ -107,22 +107,23 @@ V1 では銀行・証券・保険・REIT を一般事業会社と同じ Quality 
 **データ取得失敗時に synthetic / mock market data へ切り替えて投資判断を続ける実装は禁止。**  
 テスト用の固定 fixture は許可するが、本番データ取得失敗時の代替入力としては使わない。
 
-## Security 識別
+## Security / Issuer 識別
 
-Ticker を恒久主キーにしない。内部識別子は `SecurityId`。  
-識別子履歴は `SecurityIdentifier`（`TICKER` / `CIK` / `VENDOR_PERMANENT_ID`）として保持する。
+Ticker を恒久主キーにしない。内部識別子は `SecurityId`（個別 Security）と `IssuerId`（提出・発行主体）。  
+Security 側識別子履歴は `SecurityIdentifier`（主に `TICKER` / `VENDOR_PERMANENT_ID`）。  
+CIK は Issuer 側 `IssuerIdentifier`（10 桁ゼロ埋め正規形）。Issuer と Security は `IssuerSecurityRelation` で明示的に結ぶ（1:N 許可、自動選択なし）。
 
 - Ticker 変更後も同一 `SecurityId` なら同一 Security
 - 同じ Ticker 文字列でも異なる `SecurityId` なら別 Security
-- Ticker recycle を文字列だけで結合しない
+- Ticker recycle / CIK 文字列だけで Security を結合・決定しない
 - 最新版の暗黙選択、source conflict の自動解決は行わない
 
 ## 今回の実装範囲
 
 - 単一 Gradle プロジェクト（Kotlin/JVM, JDK 17）
-- 不変モデル: `SecurityId`, `SecurityIdentifier`, `DailyPrice`, `DividendEvent`, `FundamentalSnapshot`
+- 不変モデル: `SecurityId`, `SecurityIdentifier`, `IssuerId`, `IssuerIdentifier`, `IssuerSecurityRelation`, `DailyPrice`, `DividendEvent`, `FundamentalSnapshot`
 - PIT utility: `isAvailableAt(decisionAt)` および候補集合 Query
-- 識別子の銘柄別・時点別候補 Index（自動統合なし）
+- 識別子 / Issuer↔Security relation の時点別候補 Index（自動統合なし）
 - 明白に不正な OHLC / 負の配当額の拒否
 - 仕様文書と検証記録
 
@@ -132,8 +133,8 @@ Ticker を恒久主キーにしない。内部識別子は `SecurityId`。
 `DividendEvent` の `declarationDate` / `recordDate` / `paymentDate` は null を許容する。  
 履歴上 `exDate` が存在することと、過去の `decisionAt` 時点でその配当予定を知っていたことは別である。
 
-`FundamentalSnapshot` は提出済み財務資料のメタデータのみ。Revenue / FCF / Debt / ROIC 等は未定義のため持たない。  
-不変条件: `filedAt <= knownAt <= ingestedAt`。
+`FundamentalSnapshot` は Issuer 側の提出済み財務資料メタデータのみ（`issuerId`）。Revenue / FCF / Debt / ROIC 等は未定義のため持たない。  
+不変条件: `filedAt <= knownAt <= ingestedAt`。Security への自動解決はしない。
 
 ## 未実装範囲
 

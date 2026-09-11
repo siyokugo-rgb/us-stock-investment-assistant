@@ -3,6 +3,9 @@ package support
 import dividend.DividendEvent
 import dividend.DividendType
 import fundamentals.FundamentalSnapshot
+import issuer.IssuerId
+import issuer.IssuerIdentifier
+import issuer.IssuerSecurityRelation
 import market.DailyPrice
 import security.IdentifierType
 import security.SecurityId
@@ -18,6 +21,8 @@ import java.time.LocalDate
 object Fixtures {
     val SEC_A = SecurityId("sec-0001")
     val SEC_B = SecurityId("sec-0002")
+    val ISSUER_A = IssuerId("issuer-0001")
+    val ISSUER_B = IssuerId("issuer-0002")
 
     val KNOWN_AT: Instant = Instant.parse("2024-06-10T16:00:00Z")
     val DECISION_BEFORE: Instant = Instant.parse("2024-06-10T15:59:59.999Z")
@@ -44,6 +49,40 @@ object Fixtures {
             securityId = securityId,
             type = type,
             value = value,
+            validFrom = validFrom,
+            validTo = validTo,
+            knownAt = knownAt,
+            ingestedAt = ingestedAt,
+            source = source,
+        )
+
+    fun issuerIdentifier(
+        issuerId: IssuerId = ISSUER_A,
+        rawCik: String = "320193",
+        knownAt: Instant = KNOWN_AT,
+        ingestedAt: Instant = INGESTED_AT,
+        source: String = "fixture-source",
+    ): IssuerIdentifier =
+        IssuerIdentifier.cik(
+            issuerId = issuerId,
+            rawCik = rawCik,
+            knownAt = knownAt,
+            ingestedAt = ingestedAt,
+            source = source,
+        )
+
+    fun issuerSecurityRelation(
+        issuerId: IssuerId = ISSUER_A,
+        securityId: SecurityId = SEC_A,
+        validFrom: LocalDate = VALID_FROM,
+        validTo: LocalDate? = VALID_TO,
+        knownAt: Instant = KNOWN_AT,
+        ingestedAt: Instant = INGESTED_AT,
+        source: String = "fixture-source",
+    ): IssuerSecurityRelation =
+        IssuerSecurityRelation(
+            issuerId = issuerId,
+            securityId = securityId,
             validFrom = validFrom,
             validTo = validTo,
             knownAt = knownAt,
@@ -106,7 +145,7 @@ object Fixtures {
         )
 
     fun fundamental(
-        securityId: SecurityId = SEC_A,
+        issuerId: IssuerId = ISSUER_A,
         fiscalPeriodEnd: LocalDate = LocalDate.of(2025, 12, 31),
         filedAt: Instant = Instant.parse("2026-02-20T21:00:00Z"),
         knownAt: Instant = Instant.parse("2026-02-20T21:00:00Z"),
@@ -114,7 +153,7 @@ object Fixtures {
         source: String = "fixture-source",
     ): FundamentalSnapshot =
         FundamentalSnapshot(
-            securityId = securityId,
+            issuerId = issuerId,
             fiscalPeriodEnd = fiscalPeriodEnd,
             filedAt = filedAt,
             knownAt = knownAt,
