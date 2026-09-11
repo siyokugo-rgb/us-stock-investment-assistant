@@ -12,15 +12,15 @@ import java.time.LocalDate
 class FundamentalSnapshotTest {
     @Test
     fun fiscalPeriodEndIsNotAvailability() {
-        val snapshot = Fixtures.fundamental(
-            fiscalPeriodEnd = LocalDate.of(2025, 12, 31),
-            filedAt = Instant.parse("2026-02-20T21:00:00Z"),
-            knownAt = Instant.parse("2026-02-20T21:00:00Z"),
-            ingestedAt = Instant.parse("2026-02-21T01:00:00Z"),
-        )
+        val snapshot =
+            Fixtures.fundamental(
+                fiscalPeriodEnd = LocalDate.of(2025, 12, 31),
+                filedAt = Instant.parse("2026-02-20T21:00:00Z"),
+                knownAt = Instant.parse("2026-02-20T21:00:00Z"),
+                ingestedAt = Instant.parse("2026-02-21T01:00:00Z"),
+            )
         val decisionBeforeFiling = Instant.parse("2026-01-15T15:00:00Z")
         // fiscalPeriodEnd が 2025-12-31 でも、filedAt/knownAt 前の decision では使用禁止。
-        // Instant を日付 00:00 に変換して比較しない。可用性は knownAt のみで判定する。
         assertEquals(LocalDate.of(2025, 12, 31), snapshot.fiscalPeriodEnd)
         assertEquals(Instant.parse("2026-02-20T21:00:00Z"), snapshot.knownAt)
         assertFalse(snapshot.isAvailableAt(decisionBeforeFiling))
@@ -57,9 +57,28 @@ class FundamentalSnapshotTest {
     }
 
     @Test
-    fun snapshotsDoNotJoinDifferentSecurityIds() {
-        val a = Fixtures.fundamental(securityId = Fixtures.SEC_A)
-        val b = Fixtures.fundamental(securityId = Fixtures.SEC_B)
-        assertEquals(listOf(a), listOf(a, b).filter { it.securityId == Fixtures.SEC_A })
+    fun snapshotHoldsIssuerIdNotSecurityId() {
+        val snapshot = Fixtures.fundamental(issuerId = Fixtures.ISSUER_A)
+        assertEquals(Fixtures.ISSUER_A, snapshot.issuerId)
+        // FundamentalSnapshot has no securityId property and does not auto-select Security.
+        val props = snapshot::class.members.map { it.name }.toSet()
+        assertTrue("issuerId" in props)
+        assertFalse("securityId" in props)
+    }
+
+    @Test
+    fun snapshotsDoNotJoinDifferentIssuerIds() {
+        val a = Fixtures.fundamental(issuerId = Fixtures.ISSUER_A)
+        val b = Fixtures.fundamental(issuerId = Fixtures.ISSUER_B)
+        assertEquals(listOf(a), listOf(a, b).filter { it.issuerId == Fixtures.ISSUER_A })
+    }
+
+    @Test
+    fun snapshotDoesNotAutoSelectSecurity() {
+        val snapshot = Fixtures.fundamental(issuerId = Fixtures.ISSUER_A)
+        // Resolving Security requires an explicit IssuerSecurityRelation query elsewhere.
+        // This type only carries issuerId.
+        assertEquals(Fixtures.ISSUER_A, snapshot.issuerId)
+        assertEquals("issuer-0001", snapshot.issuerId.value)
     }
 }

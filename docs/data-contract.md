@@ -3,7 +3,7 @@
 対象リポジトリ: `siyokugo-rgb/us-stock-investment-assistant`  
 基準 `main`: `8711a85e038fb49d9585f7170ad72b95ab05788a`（merge PR #2）  
 前提ドキュメント: [`phase-0-spec.md`](phase-0-spec.md)、[`validation.md`](validation.md)  
-前提コード（Source of Truth）: `SecurityId`, `SecurityIdentifier`, `SecurityIdentifierIndex`, `DailyPrice`, `DividendEvent`, `FundamentalSnapshot`, `Pit`, `PitQuery`
+前提コード（Source of Truth）: `SecurityId`, `SecurityIdentifier`, `SecurityIdentifierIndex`, `IssuerId`, `IssuerIdentifier`, `IssuerSecurityRelation`, `IssuerSecurityRelationIndex`, `DailyPrice`, `DividendEvent`, `FundamentalSnapshot`, `Pit`, `PitQuery`
 
 ## 文書の位置づけ
 
@@ -46,28 +46,51 @@ SEC / Tiingo / Yahoo 等の HTTP クライアント、DB、Android、戦略、�
 
 | 概念 | 意味 | 現状コード |
 | --- | --- | --- |
-| Issuer | 提出・発行の主体（会社等） | **未モデル化** |
+| Issuer | 提出・発行の主体（会社等） | `IssuerId`（内部 identity） |
 | Security | 取引可能な証券（例: 普通株の1 share class） | `SecurityId` |
-| CIK | SEC が付与する提出主体側識別子 | `IdentifierType.CIK` として `SecurityIdentifier` に載せ得るが、意味は Issuer 寄り |
-| Ticker | 取引所表示用の一時的シンボル | `IdentifierType.TICKER` |
+| CIK | SEC が付与する提出主体側識別子 | `IssuerIdentifier`（`IssuerIdentifierType.CIK`）。正規形は 10 桁ゼロ埋め |
+| Issuer↔Security | 明示 relation | `IssuerSecurityRelation` / `IssuerSecurityRelationIndex` |
+| Ticker | 取引所表示用の一時的シンボル | `IdentifierType.TICKER`（Security 側） |
 | Exchange | 上場市場（例: NYSE, NASDAQ） | **未モデル化**（識別子 value に埋め込まない） |
 | Vendor Permanent Identifier | ベンダー固有の恒久ID | `IdentifierType.VENDOR_PERMANENT_ID` |
 
-### 1.2 CIK と Security は 1:1 ではない
+### 1.2 Issuer / Security / CIK の責務（正式）
 
-SEC CIK は**提出主体**側の識別子である。1 CIK に複数の share class / 証券がぶら下がることがある。  
-逆に、ある株式 Security の開示が親会社 CIK 配下に載ることもある。
+- **`IssuerId`** = 内部 Issuer identity。Ticker / CIK から導出しない。外部 identifier そのものを内部 ID にしない。blank 禁止・不変。
+- **`SecurityId`** = 個別 Security identity（現行どおり）。価格・配当・保有の主キー。
+- **`CIK`** = Issuer 側 external identifier。`SecurityId` ではない。CIK 文字列だけで Security を決定しない。CompanyFacts CIK を Security へ直結しない。
+- **CompanyFacts / SEC filing** = Issuer / filing-entity 側。
+- **`FundamentalSnapshot`** = Issuer 側提出メタデータ（`issuerId`）。Security 自動解決はしない。
+- **Issuer : Security = 1:N を正式許可。** 1 Issuer = 1 Security 前提、最初/最新/ticker 優先の自動選択、share class 自動統合、代表銘柄の勝手な決定は禁止。
+- Issuer と Security は **`IssuerSecurityRelation` で明示的に結ぶ。** relation 無し・複数候補・CIK/ticker のみでは Security を推測しない。ambiguity は候補集合のまま保持し、単一 Security が必要な上位処理は候補数 != 1 なら Fail-Closed。
 
-**結論: Issuer と Security は分離すべきである。**
+### 1.3 relation の事実期間と PIT
 
-- 投資判断・価格・配当・保有数量の主キーは **Security**（現行 `SecurityId`）
-- 提出書類・CIK・issuer-level fundamentals の主キーは将来 **Issuer**（未実装）
-- 同一 Issuer に複数 share class（例: 議決権差のある Class A / Class B）がある場合、**別 `SecurityId`** とする
-- CIK 文字列だけで Security を一意確定してはならない。衝突・複数候補は Fail-Closed（`IDENTITY_UNRESOLVED`）
+`IssuerSecurityRelation`:
 
-**今回は `IssuerId` クラスを新規実装しない。** Phase 0 core の `SecurityId` を維持し、Issuer 分離は次のモデル拡張候補として本契約に固定するに留める。
+| フィールド | 意味 |
+| --- | --- |
+| `validFrom` / `validTo` | 現実世界でその relation が成立した期間（from inclusive / to exclusive。`validTo == null` は終了未知） |
+| `knownAt` | その relation 情報が利用可能になった時刻 |
+| `ingestedAt` | アプリが取得した時刻 |
 
-### 1.3 事象定義
+三者を混同しない。`knownAt` / `ingestedAt` を `validFrom` から生成禁止。現在時刻の暗黙補完禁止。
+
+クエリ `availableSecuritiesFor(issuerId, asOfDate, decisionAt)` は次をすべて満たす候補のみ返す:
+
+- `issuerId` 一致
+- `validFrom <= asOfDate` かつ (`validTo == null` または `asOfDate < validTo`)
+- `decisionAt >= knownAt`
+
+`ingestedAt` は知識PIT条件に含めない（保有PITは別責務）。
+
+### 1.4 CIK identifier に validFrom / validTo を付けない理由
+
+`IssuerIdentifier`（CIK）は今回、履歴期間フィールドを持たない。  
+現行要件は「CIK = Issuer 側 identifier」の責務固定であり、CIK 再割当・移行の実データ契約が未検証のため、推測で履歴期間を導入しない。  
+Issuer↔Security の事実期間は `IssuerSecurityRelation` 側で表現する。Security 側 Ticker 等の `validFrom` / `validTo` は従来どおり `SecurityIdentifier` が担う。
+
+### 1.5 事象定義
 
 | 事象 | 定義 | `SecurityId` | Identifier 履歴 |
 | --- | --- | --- | --- |
@@ -78,9 +101,9 @@ SEC CIK は**提出主体**側の識別子である。1 CIK に複数の share c
 | Merger / Acquisition | 存続・消滅・対価の組合せ | 消滅 Security は終了、存続または新 Security を明示 | 価格・株数・対価は Corporate Action（§5） |
 | 同一 Ticker 文字列の別 Security | 同時または異時点で同文字列 | **別 `SecurityId`** | Index は候補をすべて返す |
 
-### 1.4 `validFrom` / `validTo`
+### 1.6 `validFrom` / `validTo`
 
-現行（維持）:
+現行（維持）: `SecurityIdentifier` および `IssuerSecurityRelation` 共通。
 
 - `validFrom`: inclusive
 - `validTo`: exclusive
@@ -208,13 +231,13 @@ QDR 自体は未検証仮説であり、本 Grade 定義は QDR 専用ではな�
 
 ### 4.1 SEC EDGAR を主要一次情報候補とする
 
-現行 `FundamentalSnapshot` はメタデータのみ（数値なし）。実データ PoC 前に意味を固定する。
+現行 `FundamentalSnapshot` は **Issuer 側**の提出済み財務メタデータのみ（数値なし）。`issuerId` を主キーとする。Security への自動解決はしない。
 
 | フィールド | 意味 | 現行 |
 | --- | --- | --- |
-| `issuerId` | 提出主体（将来） | 未実装 |
-| `securityId` | 証券。share-class 固有指標がある場合に使用 | あり |
-| CIK | Issuer 側識別子 | Identifier または将来 Issuer 属性 |
+| `issuerId` | 提出主体（内部 Issuer identity） | **あり** |
+| `securityId` | 証券。share-class 固有指標がある場合に使用 | FundamentalSnapshot からは除去。Security 固有処理は relation 解決後 |
+| CIK | Issuer 側 external identifier | `IssuerIdentifier`（`IssuerIdentifierType.CIK`） |
 | `accessionNumber` | EDGAR 提出のaccession | 未実装（provenance 候補） |
 | `formType` | 10-K / 10-Q / 8-K / 10-K/A 等 | 未実装 |
 | `fiscalPeriodEnd` | 会計期間末日（effectiveAt） | `fiscalPeriodEnd` |
@@ -225,6 +248,9 @@ QDR 自体は未検証仮説であり、本 Grade 定義は QDR 専用ではな�
 | `source` | 情報源 | あり |
 
 例: `fiscalPeriodEnd = 2025-12-31`, `filedAt = 2026-02-20` → 2026-01-15 の decision では使用禁止。
+
+不変条件（維持）: `filedAt <= knownAt <= ingestedAt`。  
+CompanyFacts の `filed` や submissions `acceptanceDateTime` を `knownAt` へ自動投入しない。
 
 ### 4.2 版の区別（必須）
 
@@ -262,7 +288,8 @@ SEC XBRL CompanyFacts は Issuer / filing-entity 集約の一次候補ソース�
 - CompanyFacts → `SecurityId` 直結禁止
 - fact version は `accn` 付き候補集合として保持（潰さない / 最新自動採用禁止）
 - `filed` を historical `knownAt` にしない
-- `FundamentalSnapshot` 本番 mapping は Issuer 境界確定後まで禁止
+- `FundamentalSnapshot` は `issuerId` を保持する（Issuer 側）。Security 固有処理には `IssuerSecurityRelation` 解決が必要
+- CompanyFacts → `FundamentalSnapshot` への数値本番 mapping・Provider 本実装はなお別工程（本境界修正だけでは有効化しない）
 
 ---
 
@@ -551,4 +578,4 @@ CompanyFacts / SEC XBRL に関する一般規則（特定 issuer・固有 concep
 8. **`accn` 欠損時は version を推測結合しない**（Fail-Closed）。欠落 accession を invent して submissions / archive へつないではならない。
 9. **taxonomy / concept / unit / start / end / fy / fp / form / frame 等の意味を保持してから正規化する。** 欠落し得るフィールドを勝手に補完しない。unit 違いは別候補として保持し、自動統合しない。
 10. **CompanyFacts に concept / period が存在しないことを、「当該 filing に開示がない」と即断してはならない。** taxonomy 差・tag 選定・XBRL 抽出範囲・API 集約の限界があり得る。
-11. **`FundamentalSnapshot` への本番 mapping は Issuer 境界確定後まで禁止**する。本契約は Feasibility / 版候補保持の境界を固定するものであり、数値メトリクス完成・Quality / QDR / Backtest 有効の証明ではない。
+11. **`FundamentalSnapshot` は Issuer 側（`issuerId`）である。** CompanyFacts → 数値メトリクスの本番 mapping / Provider 本実装はなお禁止。本契約は Feasibility / 版候補保持と Issuer 責務境界を固定するものであり、数値メトリクス完成・Quality / QDR / Backtest 有効の証明ではない。
