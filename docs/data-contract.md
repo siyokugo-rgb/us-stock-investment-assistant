@@ -126,10 +126,23 @@ Provider が inclusive/inclusive 等で返す場合は、**Provider 境界アダ
 | `tradingDate` | **対象取引所の取引日**（UTC 日付ではない） |
 | `open` / `high` / `low` / `close` | 当該セッション定義に基づく未調整価格 |
 | `volume` | 当該セッション定義に基づく出来高 |
-| `currency` | 価格通貨 |
+| `currency` | 価格通貨（§2.1.1） |
 | `knownAt` | その版を根拠付きで利用可能になった時刻 |
 | `ingestedAt` | 本システム取得時刻 |
 | `source` | 情報源（Phase 0 は文字列。拡張は §7） |
+
+### 2.1.1 `currency` の根拠（必須）
+
+`DailyPrice.currency` は **明示的な source evidence** が必要である。
+
+| 規則 | 扱い |
+| --- | --- |
+| 推測禁止 | ticker / provider symbol / exchange / timezone / 「US株らしい」見た目から通貨を推測してはならない |
+| price source に currency が無い場合 | 別の **検証済み identifier / source** との join が必要。join 側にも provenance と identifier 整合が求められる |
+| 未解決時 | `DailyPrice` を生成してはならない（Fail-Closed） |
+| knownAt との関係 | `currency` 未解決と historical `knownAt` 未解決は **別々の mapping blocker** である。片方だけ解決しても `DailyPrice` へ進まない |
+
+特定 Provider の固有値・エンドポイント名を本節にハードコードしない。Provider ごとの可否は Feasibility PoC 文書に記録する。
 
 ### 2.2 取引日・セッション・確定
 
