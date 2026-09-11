@@ -173,6 +173,7 @@ JDK 17 が必要。Gradle Wrapper を使う。
 
 - Data Contract: [`docs/data-contract.md`](docs/data-contract.md)
 - SEC EDGAR submissions metadata PoC: [`docs/sec-edgar-poc.md`](docs/sec-edgar-poc.md)
+- SEC EDGAR accession / filing artifact PoC: [`docs/sec-edgar-accession-poc.md`](docs/sec-edgar-accession-poc.md)
 
 Data Contract と SEC PoC は、実データ取得・財務/価格/配当 PIT 成立・戦略有効性を証明しない。  
 `acceptanceDateTime` は public availability の lower-bound evidence になり得るが、historical `knownAt` 単独使用は insufficient（conservative proxy ではない）。
