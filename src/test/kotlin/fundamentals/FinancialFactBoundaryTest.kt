@@ -146,6 +146,23 @@ class FinancialFactBoundaryTest {
     }
 
     @Test
+    fun mixedSameAndDifferentValuesInBucketPreferUnresolvedOverRepeated() {
+        val a = fact(form = "10-K", accession = "0000320193-25-000001", value = "100")
+        val b = fact(form = "10-K", accession = "0000320193-25-000002", value = "100")
+        val c = fact(form = "10-K", accession = "0000320193-25-000003", value = "90")
+        val set = FinancialFactCandidateSet(listOf(a, b, c))
+        assertEquals(3, set.candidates.size)
+        // Value-conflict peers exist for every candidate; do not treat 100/100 as safe REPEATED.
+        assertTrue(set.candidates.all { it.classification == FactVersionClassification.UNRESOLVED })
+        assertTrue(set.candidates.none { it.classification == FactVersionClassification.REPEATED })
+        assertTrue(set.candidates.none { it.classification == FactVersionClassification.RESTATEMENT_CANDIDATE })
+        val hundredSide =
+            set.candidates.filter { it.fact.value.compareTo(BigDecimal("100")) == 0 }
+        assertEquals(2, hundredSide.size)
+        assertTrue(hundredSide.all { it.classification == FactVersionClassification.UNRESOLVED })
+    }
+
+    @Test
     fun nonAmendmentValueDifferenceIsUnresolvedNotRestatementCandidate() {
         val a = fact(form = "10-K", accession = "0000320193-25-000079", value = "100")
         val b = fact(form = "10-K", accession = "0000320193-25-000099", value = "90")

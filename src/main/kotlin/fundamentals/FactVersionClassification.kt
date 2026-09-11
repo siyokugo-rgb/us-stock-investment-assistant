@@ -33,9 +33,9 @@ enum class FactVersionClassification {
  *
  * 規則:
  * - form が `/A` → [AMENDMENT]（値差があっても自動 replacement / restatement にしない）
- * - 同一 concept/period/unit/value + 別 accession → [REPEATED]
- * - 同一 concept/period/unit で値差 + 別 accession → [UNRESOLVED]（RESTATEMENT_CANDIDATE へ自動昇格しない）
- * - その他の通常 filing → [ORIGINAL]
+ * - 同一 concept/period/unit で値差 peer が存在 → [UNRESOLVED]（同値 peer がいても REPEATED より優先。RESTATEMENT_CANDIDATE へ自動昇格しない）
+ * - 値差 peer が無く、同値・別 accession のみ → [REPEATED]
+ * - peer 無しの通常 filing → [ORIGINAL]
  */
 object FactVersionClassifier {
     fun classify(
@@ -62,8 +62,8 @@ object FactVersionClassifier {
             sameBucket.any { it.value.compareTo(fact.value) != 0 }
 
         return when {
-            sameValueDifferentAccession -> FactVersionClassification.REPEATED
             differentValueDifferentAccession -> FactVersionClassification.UNRESOLVED
+            sameValueDifferentAccession -> FactVersionClassification.REPEATED
             fact.form.isNotBlank() -> FactVersionClassification.ORIGINAL
             else -> FactVersionClassification.UNRESOLVED
         }
