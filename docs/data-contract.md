@@ -293,6 +293,33 @@ SEC XBRL CompanyFacts は Issuer / filing-entity 集約の一次候補ソース�
 - `FundamentalSnapshot` は `issuerId` を保持する（Issuer 側）。Security 固有処理には `IssuerSecurityRelation` 解決が必要
 - CompanyFacts → `FundamentalSnapshot` への数値本番 mapping・Provider 本実装はなお別工程（本境界修正だけでは有効化しない）
 
+### 4.5 Raw fact / normalized concept / version 候補境界（正式）
+
+CompanyFacts raw fact を将来の財務 metric へ安全に接続するための意味境界。実装: `RawFinancialFact`, `FactPeriod`, `NormalizedFinancialConcept`, `FinancialFactCandidateSet`。
+
+1. **raw fact と normalized concept を分離する。** raw は taxonomy / concept / unit / period / accession / value を保持する。`Map<String, BigDecimal>` への縮退は禁止。
+2. **raw fact は Issuer 側（`issuerId`）である。** `SecurityId` を持たせない。Security 解決は明示 relation のみ。
+3. **period identity は instant=`end`、duration=`start`+`end`。** fy / fp / frame は補助 metadata。fy/fp/frame だけで period を断定しない。annual/quarterly を fp 文字列だけで断定しない。
+4. **明示 mapping がある standard US-GAAP tag のみ normalized concept を付与する。** 未確認 tag・extension・企業固有 tag の推測 mapping 禁止。unmapped は null のまま（UNKNOWN へ丸めない）。
+5. **unit は raw fact identity の一部。** USD / shares / USD/shares / pure 等を勝手に変換・統合しない。同一 concept/period でも unit が違えば別候補。
+6. **同一 issuer / normalized concept / period に複数 accession があればすべて候補保持。** 同一値でも provenance（accession）が違えば削除しない。latest-wins 禁止。
+7. **`/A` は amendment fact（AMENDMENT）であり、automatic replacement ではない。** original を上書きしない。値差だけで authoritative selection しない。
+8. **値差だけでは restatement と推定しない。** 同一 raw concept/period/unit で別 accession・値差は UNRESOLVED。値差 peer が存在する bucket では、同値 peer があっても REPEATED より UNRESOLVED を優先する。`RESTATEMENT_CANDIDATE` への昇格には SEC 一次情報など明示 evidence が別途必要（自動生成禁止）。
+9. **accession は canonical 形式 `##########-##-######` 必須。** leading/trailing whitespace（space/tab/newline 含む）・blank・dash 無し・桁不足・非数字は Fail-Closed。silent trim による受理は禁止。accession prefix から IssuerId / SecurityId を推測しない。
+10. **最終値 resolver は本段階では実装しない。** 公開 API は `candidatesFor(...)` の候補集合まで。単一値利用条件（unit 妥当性・version 意味・historical PIT を含む）は将来 resolver の責務であり、unit / version / PIT 規則確定後まで実装禁止。
+11. **PIT: `filed` は historical knownAt ではない。** acceptanceDateTime も CONFIRMED knownAt ではない。raw fact から knownAt を生成する API を追加しない。現行 CompanyFacts state を過去へ遡及利用しない。historical PIT 不足 version を過去 decision に使わない。
+
+観察済み明示 mapping（これ以外を勝手に追加しない）:
+
+| normalized | raw taxonomy | raw concept |
+| --- | --- | --- |
+| REVENUE | us-gaap | `RevenueFromContractWithCustomerExcludingAssessedTax` |
+| REVENUE | us-gaap | `Revenues` |
+| NET_INCOME | us-gaap | `NetIncomeLoss` |
+| ASSETS | us-gaap | `Assets` |
+| LIABILITIES | us-gaap | `Liabilities` |
+| CASH_AND_CASH_EQUIVALENTS | us-gaap | `CashAndCashEquivalentsAtCarryingValue` |
+
 ---
 
 ## 5. Corporate Action Contract（設計のみ・完全実装しない）
