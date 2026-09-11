@@ -1,0 +1,110 @@
+{
+  "cik": 320193,
+  "entityName": "Apple Inc.",
+  "facts": {
+    "us-gaap": {
+      "NetIncomeLoss": {
+        "label": "Net Income (Loss) Attributable to Parent",
+        "description": "sanitized",
+        "units": {
+          "USD": [
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 112010000000,
+              "accn": "0000320193-25-000079",
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31",
+              "frame": "CY2025"
+            },
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 99999000000,
+              "accn": "0000320193-25-000099",
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K/A",
+              "filed": "2025-11-15",
+              "frame": "CY2025"
+            },
+            {
+              "start": "2026-03-30",
+              "end": "2026-06-27",
+              "val": 29789000000,
+              "accn": "0000320193-26-000020",
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "frame": "CY2026Q2"
+            }
+          ]
+        }
+      },
+      "Assets": {
+        "label": "Assets",
+        "units": {
+          "USD": [
+            {
+              "end": "2025-09-27",
+              "val": 359241000000,
+              "accn": "0000320193-25-000079",
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31"
+            }
+          ]
+        }
+      },
+      "FiniteLivedIntangibleAssetsUsefulLifeMaximum": {
+        "label": "Finite-Lived Intangible Assets, Useful Life, Maximum",
+        "units": {
+          "pure": [
+            {
+              "end": "2025-09-27",
+              "val": 1,
+              "accn": "0000320193-25-000079",
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31"
+            }
+          ],
+          "Year": [
+            {
+              "end": "2025-09-27",
+              "val": 10,
+              "accn": "0000320193-25-000079",
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31"
+            }
+          ]
+        }
+      }
+    },
+    "dei": {
+      "EntityPublicFloat": {
+        "label": "Entity Public Float",
+        "units": {
+          "USD": [
+            {
+              "end": "2025-03-28",
+              "val": 1,
+              "accn": "0000320193-25-000079",
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
