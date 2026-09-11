@@ -305,7 +305,7 @@ CompanyFacts raw fact を将来の財務 metric へ安全に接続するため�
 6. **同一 issuer / normalized concept / period に複数 accession があればすべて候補保持。** 同一値でも provenance（accession）が違えば削除しない。latest-wins 禁止。
 7. **`/A` は amendment fact（AMENDMENT）であり、automatic replacement ではない。** original を上書きしない。値差だけで authoritative selection しない。
 8. **値差だけでは restatement と推定しない。** 同一 raw concept/period/unit で別 accession・値差は UNRESOLVED。`RESTATEMENT_CANDIDATE` への昇格には SEC 一次情報など明示 evidence が別途必要（自動生成禁止）。
-9. **accession は canonical 形式 `##########-##-######` 必須。** blank / dash 無し / 桁不足 / 非数字は Fail-Closed。accession prefix から IssuerId / SecurityId を推測しない。
+9. **accession は canonical 形式 `##########-##-######` 必須。** leading/trailing whitespace（space/tab/newline 含む）・blank・dash 無し・桁不足・非数字は Fail-Closed。silent trim による受理は禁止。accession prefix から IssuerId / SecurityId を推測しない。
 10. **最終値 resolver は本段階では実装しない。** 公開 API は `candidatesFor(...)` の候補集合まで。単一値利用条件（unit 妥当性・version 意味・historical PIT を含む）は将来 resolver の責務であり、unit / version / PIT 規則確定後まで実装禁止。
 11. **PIT: `filed` は historical knownAt ではない。** acceptanceDateTime も CONFIRMED knownAt ではない。raw fact から knownAt を生成する API を追加しない。現行 CompanyFacts state を過去へ遡及利用しない。historical PIT 不足 version を過去 decision に使わない。
 

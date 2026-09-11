@@ -322,12 +322,36 @@ class FinancialFactBoundaryTest {
         val raw = fact(accession = "0000320193-25-000079")
         assertEquals("0000320193-25-000079", raw.accessionNumber)
         assertTrue(AccessionNumberFormat.isCanonical(raw.accessionNumber))
+        assertEquals("0000320193-25-000079", AccessionNumberFormat.requireCanonical(raw.accessionNumber))
+    }
+
+    @Test
+    fun leadingWhitespaceAccessionIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            fact(accession = " 0000320193-25-000079")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            AccessionNumberFormat.requireCanonical("\t0000320193-25-000079")
+        }
+    }
+
+    @Test
+    fun trailingWhitespaceAccessionIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            fact(accession = "0000320193-25-000079 ")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            AccessionNumberFormat.requireCanonical("0000320193-25-000079\n")
+        }
     }
 
     @Test
     fun blankAccessionIsRejected() {
         assertFailsWith<IllegalArgumentException> {
             fact(accession = " ")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            AccessionNumberFormat.requireCanonical("")
         }
     }
 
