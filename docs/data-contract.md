@@ -303,9 +303,11 @@ CompanyFacts raw fact を将来の財務 metric へ安全に接続するため�
 4. **明示 mapping がある standard US-GAAP tag のみ normalized concept を付与する。** 未確認 tag・extension・企業固有 tag の推測 mapping 禁止。unmapped は null のまま（UNKNOWN へ丸めない）。
 5. **unit は raw fact identity の一部。** USD / shares / USD/shares / pure 等を勝手に変換・統合しない。同一 concept/period でも unit が違えば別候補。
 6. **同一 issuer / normalized concept / period に複数 accession があればすべて候補保持。** 同一値でも provenance（accession）が違えば削除しない。latest-wins 禁止。
-7. **amendment / restatement は candidate / unresolved に留める。** `/A` だから original を上書きしない。AMENDMENT ≠ authoritative replacement。
-8. **最終値 resolver は原則禁止。** 公開 API は `candidatesFor(...)` の候補集合。単一値が必要な上位層は、候補数=1 かつ concept/unit/period/version 意味が十分確定した場合のみ利用可。それ以外は Fail-Closed。
-9. **PIT: `filed` は historical knownAt ではない。** acceptanceDateTime も CONFIRMED knownAt ではない。raw fact から knownAt を生成する API を追加しない。現行 CompanyFacts state を過去へ遡及利用しない。historical PIT 不足 version を過去 decision に使わない。
+7. **`/A` は amendment fact（AMENDMENT）であり、automatic replacement ではない。** original を上書きしない。値差だけで authoritative selection しない。
+8. **値差だけでは restatement と推定しない。** 同一 raw concept/period/unit で別 accession・値差は UNRESOLVED。`RESTATEMENT_CANDIDATE` への昇格には SEC 一次情報など明示 evidence が別途必要（自動生成禁止）。
+9. **accession は canonical 形式 `##########-##-######` 必須。** blank / dash 無し / 桁不足 / 非数字は Fail-Closed。accession prefix から IssuerId / SecurityId を推測しない。
+10. **最終値 resolver は本段階では実装しない。** 公開 API は `candidatesFor(...)` の候補集合まで。単一値利用条件（unit 妥当性・version 意味・historical PIT を含む）は将来 resolver の責務であり、unit / version / PIT 規則確定後まで実装禁止。
+11. **PIT: `filed` は historical knownAt ではない。** acceptanceDateTime も CONFIRMED knownAt ではない。raw fact から knownAt を生成する API を追加しない。現行 CompanyFacts state を過去へ遡及利用しない。historical PIT 不足 version を過去 decision に使わない。
 
 観察済み明示 mapping（これ以外を勝手に追加しない）:
 

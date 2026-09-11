@@ -13,6 +13,8 @@ import java.time.LocalDate
  *
  * [filed] は filing 日付であり historical knownAt ではない。
  * 本型から knownAt を生成する API は提供しない。
+ *
+ * [accessionNumber] は canonical SEC 形式 `##########-##-######` 必須。
  */
 data class RawFinancialFact(
     val issuerId: IssuerId,
@@ -34,7 +36,7 @@ data class RawFinancialFact(
         require(concept.isNotBlank()) { "concept must not be blank" }
         require(unit.isNotBlank()) { "unit must not be blank" }
         require(form.isNotBlank()) { "form must not be blank" }
-        require(accessionNumber.isNotBlank()) { "accessionNumber must not be blank" }
+        AccessionNumberFormat.requireCanonical(accessionNumber)
         if (start != null) {
             require(!start.isAfter(end)) { "start ($start) must not be after end ($end)" }
         }

@@ -4,10 +4,11 @@ package fundamentals
  * version 候補の最小 classification。
  *
  * AMENDMENT ≠ authoritative replacement。
- * SEC 一次情報で確定できない場合は UNRESOLVED / candidate に留める。
+ * 値差だけでは RESTATEMENT_CANDIDATE に昇格しない。
+ * RESTATEMENT_CANDIDATE は SEC 一次情報など明示 evidence が将来追加された場合のみ付与可能（本 classifier では自動生成しない）。
  */
 enum class FactVersionClassification {
-    /** form が /A で終わらない提出版候補 */
+    /** form が /A で終わらない通常 filing 候補 */
     ORIGINAL,
 
     /** form が /A で終わる提出版候補。original を自動置換しない */
@@ -16,22 +17,35 @@ enum class FactVersionClassification {
     /** 同一 concept/period/unit/value で accession のみ異なる開示候補 */
     REPEATED,
 
-    /** 同一 concept/period/unit で value が異なる別 accession（restatement 可能性。未確定） */
+    /**
+     * restatement 候補。
+     * 値差だけでは付与しない。明示的な一次 evidence が無い限り本 classifier は返さない。
+     */
     RESTATEMENT_CANDIDATE,
 
-    /** 関係を確定できない */
+    /** 関係を確定できない（例: 同一 bucket の値差で /A でもない） */
     UNRESOLVED,
 }
 
 /**
  * 候補間の関係から最小 classification を付与する。
  * 単一の authoritative 値を選ばない。
+ *
+ * 規則:
+ * - form が `/A` → [AMENDMENT]（値差があっても自動 replacement / restatement にしない）
+ * - 同一 concept/period/unit/value + 別 accession → [REPEATED]
+ * - 同一 concept/period/unit で値差 + 別 accession → [UNRESOLVED]（RESTATEMENT_CANDIDATE へ自動昇格しない）
+ * - その他の通常 filing → [ORIGINAL]
  */
 object FactVersionClassifier {
     fun classify(
         fact: RawFinancialFact,
         peers: List<RawFinancialFact>,
     ): FactVersionClassification {
+        if (fact.form.trim().endsWith("/A")) {
+            return FactVersionClassification.AMENDMENT
+        }
+
         val sameBucket =
             peers.filter {
                 it.issuerId == fact.issuerId &&
@@ -48,9 +62,8 @@ object FactVersionClassifier {
             sameBucket.any { it.value.compareTo(fact.value) != 0 }
 
         return when {
-            differentValueDifferentAccession -> FactVersionClassification.RESTATEMENT_CANDIDATE
             sameValueDifferentAccession -> FactVersionClassification.REPEATED
-            fact.form.trim().endsWith("/A") -> FactVersionClassification.AMENDMENT
+            differentValueDifferentAccession -> FactVersionClassification.UNRESOLVED
             fact.form.isNotBlank() -> FactVersionClassification.ORIGINAL
             else -> FactVersionClassification.UNRESOLVED
         }

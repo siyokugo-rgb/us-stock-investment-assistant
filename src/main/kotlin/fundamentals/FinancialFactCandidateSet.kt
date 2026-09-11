@@ -37,10 +37,11 @@ data class FinancialFactVersionCandidate(
 }
 
 /**
- * 候補集合 API。latest-wins / amendment 自動置換 / 単一値自動解決はしない。
+ * 候補集合 API。
  *
- * 単一値が必要な上位層は [requireSingleDeterminedCandidate] を使う。
- * 候補数 ≠ 1、または concept 未確定の場合は Fail-Closed。
+ * - latest-wins / amendment 自動置換 / 単一値自動解決はしない
+ * - 公開 API は [candidatesFor] まで
+ * - 最終値 resolver（単一値返却）は unit / version / PIT 規則確定後の後工程まで実装禁止
  */
 class FinancialFactCandidateSet(
     facts: List<RawFinancialFact>,
@@ -58,25 +59,4 @@ class FinancialFactCandidateSet(
                 it.normalizedConcept == normalizedConcept &&
                 it.periodKey == periodKey
         }
-
-    /**
-     * 単一候補かつ normalized concept が確定している場合のみ返す。
-     * それ以外は Fail-Closed（最新 accession / filed での自動選択はしない）。
-     */
-    fun requireSingleDeterminedCandidate(
-        issuerId: IssuerId,
-        normalizedConcept: NormalizedFinancialConcept,
-        periodKey: PeriodComparisonKey,
-    ): FinancialFactVersionCandidate {
-        val matched = candidatesFor(issuerId, normalizedConcept, periodKey)
-        require(matched.size == 1) {
-            "Fail-Closed: expected exactly 1 determined candidate for " +
-                "$issuerId / $normalizedConcept / $periodKey, got ${matched.size}"
-        }
-        val only = matched.single()
-        require(only.normalizedConcept == normalizedConcept) {
-            "Fail-Closed: candidate concept is not determined"
-        }
-        return only
-    }
 }

@@ -133,7 +133,7 @@ class FinancialFactBoundaryTest {
     }
 
     @Test
-    fun sameValueDifferentAccessionIsNotDeduped() {
+    fun sameValueDifferentAccessionIsRepeated() {
         val set =
             FinancialFactCandidateSet(
                 listOf(
@@ -146,12 +146,13 @@ class FinancialFactBoundaryTest {
     }
 
     @Test
-    fun differentValueDifferentAccessionIsNotCollapsed() {
-        val a = fact(accession = "0000320193-25-000079", value = "100")
-        val b = fact(accession = "0000320193-25-000099", value = "90")
+    fun nonAmendmentValueDifferenceIsUnresolvedNotRestatementCandidate() {
+        val a = fact(form = "10-K", accession = "0000320193-25-000079", value = "100")
+        val b = fact(form = "10-K", accession = "0000320193-25-000099", value = "90")
         val set = FinancialFactCandidateSet(listOf(a, b))
         assertEquals(2, set.candidates.size)
-        assertTrue(set.candidates.all { it.classification == FactVersionClassification.RESTATEMENT_CANDIDATE })
+        assertTrue(set.candidates.all { it.classification == FactVersionClassification.UNRESOLVED })
+        assertTrue(set.candidates.none { it.classification == FactVersionClassification.RESTATEMENT_CANDIDATE })
         assertNotEquals(0, a.value.compareTo(b.value))
     }
 
@@ -193,22 +194,7 @@ class FinancialFactBoundaryTest {
     }
 
     @Test
-    fun amendmentDoesNotOverwriteOriginal() {
-        val original = fact(form = "10-K", accession = "0000320193-25-000079", value = "100")
-        val amendment = fact(form = "10-K/A", accession = "0000320193-25-000099", value = "95")
-        val set = FinancialFactCandidateSet(listOf(original, amendment))
-        assertEquals(2, set.candidates.size)
-        val byAccn = set.candidates.associateBy { it.fact.accessionNumber }
-        assertEquals(
-            FactVersionClassification.RESTATEMENT_CANDIDATE,
-            byAccn.getValue(original.accessionNumber).classification,
-        )
-        assertEquals(BigDecimal("100"), byAccn.getValue(original.accessionNumber).fact.value)
-        assertEquals(BigDecimal("95"), byAccn.getValue(amendment.accessionNumber).fact.value)
-    }
-
-    @Test
-    fun amendmentAloneIsClassifiedWithoutReplacingAnything() {
+    fun amendmentAloneIsAmendment() {
         val amendment = fact(form = "10-K/A", accession = "0000320193-25-000099")
         assertEquals(
             FactVersionClassification.AMENDMENT,
@@ -217,7 +203,27 @@ class FinancialFactBoundaryTest {
     }
 
     @Test
-    fun latestAccessionIsNotAutoSelected() {
+    fun originalPlusAmendmentValueDifferenceKeepsAmendmentAsAmendmentWithoutOverwrite() {
+        val original = fact(form = "10-K", accession = "0000320193-25-000079", value = "100")
+        val amendment = fact(form = "10-K/A", accession = "0000320193-25-000099", value = "95")
+        val set = FinancialFactCandidateSet(listOf(original, amendment))
+        assertEquals(2, set.candidates.size)
+        val byAccn = set.candidates.associateBy { it.fact.accessionNumber }
+        assertEquals(
+            FactVersionClassification.UNRESOLVED,
+            byAccn.getValue(original.accessionNumber).classification,
+        )
+        assertEquals(
+            FactVersionClassification.AMENDMENT,
+            byAccn.getValue(amendment.accessionNumber).classification,
+        )
+        assertEquals(BigDecimal("100"), byAccn.getValue(original.accessionNumber).fact.value)
+        assertEquals(BigDecimal("95"), byAccn.getValue(amendment.accessionNumber).fact.value)
+        assertTrue(set.candidates.none { it.classification == FactVersionClassification.RESTATEMENT_CANDIDATE })
+    }
+
+    @Test
+    fun valueDifferenceAloneDoesNotAuthoritativelySelect() {
         val older =
             fact(accession = "0000320193-25-000001", filed = LocalDate.of(2025, 10, 1), value = "1")
         val newer =
@@ -230,13 +236,34 @@ class FinancialFactBoundaryTest {
                 periodKey = older.period().comparisonKey(),
             )
         assertEquals(2, matched.size)
-        assertFailsWith<IllegalArgumentException> {
-            set.requireSingleDeterminedCandidate(
+        assertEquals(
+            setOf("0000320193-25-000001", "0000320193-25-000999"),
+            matched.map { it.fact.accessionNumber }.toSet(),
+        )
+        assertTrue(
+            FinancialFactCandidateSet::class.java.methods.none {
+                it.name.contains("require", ignoreCase = true)
+            },
+        )
+    }
+
+    @Test
+    fun candidatesForReturnsCandidateSetOnly() {
+        val only = fact(concept = "Assets", start = null, end = LocalDate.of(2025, 9, 30))
+        val set = FinancialFactCandidateSet(listOf(only))
+        val matched =
+            set.candidatesFor(
                 issuerId = issuer,
-                normalizedConcept = NormalizedFinancialConcept.NET_INCOME,
-                periodKey = older.period().comparisonKey(),
+                normalizedConcept = NormalizedFinancialConcept.ASSETS,
+                periodKey = only.period().comparisonKey(),
             )
-        }
+        assertEquals(1, matched.size)
+        assertEquals(only.accessionNumber, matched.single().fact.accessionNumber)
+        assertTrue(
+            FinancialFactCandidateSet::class.java.declaredMethods.none {
+                it.name == "requireSingleDeterminedCandidate"
+            },
+        )
     }
 
     @Test
@@ -291,16 +318,43 @@ class FinancialFactBoundaryTest {
     }
 
     @Test
-    fun requireSingleDeterminedCandidateWhenExactlyOne() {
-        val only = fact(concept = "Assets", start = null, end = LocalDate.of(2025, 9, 30))
-        val set = FinancialFactCandidateSet(listOf(only))
-        val got =
-            set.requireSingleDeterminedCandidate(
-                issuerId = issuer,
-                normalizedConcept = NormalizedFinancialConcept.ASSETS,
-                periodKey = only.period().comparisonKey(),
-            )
-        assertEquals(only.accessionNumber, got.fact.accessionNumber)
-        assertEquals(NormalizedFinancialConcept.ASSETS, got.normalizedConcept)
+    fun canonicalAccessionIsAccepted() {
+        val raw = fact(accession = "0000320193-25-000079")
+        assertEquals("0000320193-25-000079", raw.accessionNumber)
+        assertTrue(AccessionNumberFormat.isCanonical(raw.accessionNumber))
+    }
+
+    @Test
+    fun blankAccessionIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            fact(accession = " ")
+        }
+    }
+
+    @Test
+    fun accessionWithoutDashesIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            fact(accession = "000032019325000079")
+        }
+    }
+
+    @Test
+    fun accessionWithWrongDigitCountsIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            fact(accession = "000320193-25-000079")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            fact(accession = "0000320193-5-000079")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            fact(accession = "0000320193-25-00079")
+        }
+    }
+
+    @Test
+    fun accessionWithNonDigitsIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            fact(accession = "000032019X-25-000079")
+        }
     }
 }
