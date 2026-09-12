@@ -218,7 +218,7 @@ Package: `universe.poc`
 - `RawUniverseMembershipObservation`
 - `UniverseObservationType` = SNAPSHOT / ADD / REMOVE
 - `ObservationCompleteness` = SINGLE_SNAPSHOT / COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION / INCOMPLETE_OR_UNKNOWN
-- `coverageStartDate` (required when completeness is COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION)
+- `coverageStartDate` + `coverageThroughDate` (both required when completeness is COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION)
 - `HistoricalKnownAtStatus`
 - `UniverseSourceCatalog`
 - Fail-Closed query: `UniverseMembershipPocQuery`
@@ -227,21 +227,27 @@ No production Universe aggregate. No SecurityId fields.
 
 ### 19.1 Completeness meaning (feed / coverage evidence)
 
-`ObservationCompleteness` is **not** a decorative single-row flag. It is a claim about **feed/coverage evidence as a whole**:
+`ObservationCompleteness` is **not** a decorative single-row flag. It is a claim about **feed/coverage evidence as a whole**. Completeness requires **both** a start and an end:
 
-| Value | Meaning |
+| Field / value | Meaning |
 | --- | --- |
 | `SINGLE_SNAPSHOT` | Exact as-of snapshot only; no extrapolation to other dates |
-| `COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION` | Explicit claim that `coverageStartDate` is Universe inception, membership immediately before that date is **empty**, and all ADD/REMOVE from that inception through the covered history exist without gaps |
-| `INCOMPLETE_OR_UNKNOWN` | Coverage start and/or initial state unproven; **membership rebuild forbidden** |
+| `COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION` | Explicit claim that `coverageStartDate` is Universe inception, membership immediately before that date is **empty**, and all ADD/REMOVE exist without gaps through `coverageThroughDate` |
+| `coverageStartDate` | Proven Universe inception (empty immediately before) |
+| `coverageThroughDate` | Last date through which ADD/REMOVE completeness is claimed |
+| `INCOMPLETE_OR_UNKNOWN` | Coverage start/end and/or initial state unproven; **membership rebuild forbidden** |
 
 Rules:
 
-1. **Synthetic fixture “complete” is a test assumption only.** It does **not** prove a real Provider feed is complete.
-2. If initial state / coverage start is unknown → do **not** rebuild membership (return `INDETERMINATE_INCOMPLETE_HISTORY`).
-3. Do **not** invent emptiness before the first ADD. Do **not** treat a vague “COMPLETE” enum name as proof.
-4. **Unknown universe ≠ empty universe.** Zero observations known at `decisionAt` must **not** return `MEMBERS` with an empty set as a confirmed empty membership.
-5. An ADD/REMOVE with `membershipEffectiveDate <= asOfDate` but `knownAt > decisionAt` must Fail-Closed (`UNUSABLE_KNOWN_AT`); do not silently drop it and rebuild from the remainder. Future-effective events (`effectiveDate > asOfDate`) do not affect that asOf determination.
+1. **Synthetic fixture “complete” / coverage window is a test assumption only.** It does **not** prove a real Provider feed is complete.
+2. `coverageThroughDate` must be **explicit evidence**. Do **not** infer it from max event date, `fetchedAt`, “today”, or max `effectiveDate`.
+3. Change-log rebuild is allowed only when `coverageStartDate <= asOfDate <= coverageThroughDate`. Outside that window → `INDETERMINATE_INCOMPLETE_HISTORY` (not “no members”).
+4. If initial state / coverage start / coverage end is unknown → do **not** rebuild membership.
+5. Do **not** invent emptiness before the first ADD. Do **not** treat a vague “COMPLETE” enum name as proof.
+6. **Unknown universe ≠ empty universe.** Zero observations known at `decisionAt` must **not** return `MEMBERS` with an empty set as a confirmed empty membership.
+7. **Relevant-observation knownAt only:** Fail-Closed (`UNUSABLE_KNOWN_AT`) applies to observations relevant to this asOf — ADD/REMOVE with `effectiveDate <= asOfDate` (or null effective), and SNAPSHOT with exact `asOfDate`. Future-effective observations (`effectiveDate > asOfDate`) and other-dated snapshots do **not** block this asOf.
+8. An asOf-relevant ADD/REMOVE with `knownAt > decisionAt` (or unresolved knownAt) must Fail-Closed; do not silently drop it and rebuild from the remainder.
+9. All complete change-log rows must share the same `coverageStartDate` and `coverageThroughDate`. Events with effective dates outside that window make the complete claim inconsistent → INDETERMINATE.
 
 Data Contract §6 is **not weakened**.
 
@@ -258,22 +264,30 @@ Network-free tests cover (among others):
 8. future ADD not applied to past asOf  
 9. zero known observations ≠ confirmed empty (`UNUSABLE_KNOWN_AT`)  
 10. relevant not-yet-known effective change Fail-Closed (not silent drop)  
-11. knownAt == decisionAt allowed  
-12. fetchedAt ≠ knownAt  
-13. current snapshot not back-applied  
-14. no SecurityId from ticker  
-15. ticker recycle keeps distinct external ids  
-16. delisted past member retained in past query  
-17. duplicate rows not collapsed  
-18. conflicting ADD/REMOVE not auto-resolved  
-19. unknown effectiveDate not invented  
-20. unknown knownAt not generated  
-21. incomplete / unlabeled change log → INDETERMINATE (no perpetual membership)  
-22. missing coverageStart on “complete” claim rejected  
-23. only explicit empty-inception complete synthetic log may rebuild  
-24. asOf before coverageStart → INDETERMINATE (not empty universe)  
-25. survivorship timeline 2020=A / 2021=A+B / 2023=B  
-26. full regression of prior suite  
+11. future-effective unresolved ADD does **not** block past asOf  
+12. asOf-relevant unresolved / not-yet-known ADD → `UNUSABLE_KNOWN_AT`  
+13. null `effectiveDate` ADD/REMOVE Fail-Closed (not assumed future)  
+14. future snapshot only not used for past asOf  
+15. exact asOf snapshot with `knownAt > decisionAt` → MEMBERS forbidden  
+16. knownAt == decisionAt allowed  
+17. fetchedAt ≠ knownAt  
+18. current snapshot not back-applied  
+19. no SecurityId from ticker  
+20. ticker recycle keeps distinct external ids  
+21. delisted past member retained in past query  
+22. duplicate rows not collapsed  
+23. conflicting ADD/REMOVE not auto-resolved  
+24. unknown effectiveDate not invented  
+25. unknown knownAt not generated  
+26. incomplete / unlabeled change log → INDETERMINATE (no perpetual membership)  
+27. missing coverageStart / invalid coverageStart > coverageThrough rejected  
+28. asOf before coverageStart / after coverageThrough → INDETERMINATE (not empty)  
+29. coverageStart == asOf and coverageThrough == asOf inclusive  
+30. inconsistent coverageStart / coverageThrough across rows → INDETERMINATE  
+31. event outside coverage window on complete claim → INDETERMINATE  
+32. only explicit empty-inception complete synthetic log may rebuild  
+33. survivorship timeline 2020=A / 2021=A+B / 2023=B  
+34. full regression of prior suite  
 
 ## 21. Live / document evidence vs unit tests
 

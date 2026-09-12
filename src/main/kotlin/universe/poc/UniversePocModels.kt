@@ -21,6 +21,8 @@ enum class UniverseObservationType {
  *
  * 単一 row の装飾ではなく、「どの期間を空 inception から欠損なく覆うか」の主張。
  * synthetic fixture の complete はテスト上の仮定であり、実 Provider 完全性の証明ではない。
+ *
+ * Completeness には開始点だけでなく終了点（[RawUniverseMembershipObservation.coverageThroughDate]）も必要。
  */
 enum class ObservationCompleteness {
     /** 単発 snapshot。その as-of 以外へ外挿禁止 */
@@ -28,12 +30,12 @@ enum class ObservationCompleteness {
 
     /**
      * coverageStartDate が Universe inception であり、
-     * inception 直前 membership は空、そこから全 ADD/REMOVE が欠損なく存在する、
+     * inception 直前 membership は空、coverageThroughDate まで全 ADD/REMOVE が欠損なく存在する、
      * という明示主張がある場合のみ change log 再構築を許可する。
      */
     COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION,
 
-    /** coverage 開始・初期状態・欠損有無が未証明。membership 再構築禁止 */
+    /** coverage 開始・終了・初期状態・欠損有無が未証明。membership 再構築禁止 */
     INCOMPLETE_OR_UNKNOWN,
 }
 
@@ -66,9 +68,10 @@ enum class ReconstructionMode {
  * Provider 側の生 membership 観測。SecurityId は持たない。
  *
  * - [membershipEffectiveDate] と [knownAt] を混同しない
- * - knownAt 未解決なら知識PITに使えない
+ * - knownAt 未解決なら、その asOf に relevant な観測として知識PITに使えない
  * - [fetchedAt] は保有PITのみ
- * - [coverageStartDate] は COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION のとき必須
+ * - [coverageStartDate] / [coverageThroughDate] は COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION のとき必須
+ * - coverage 境界は max event / fetchedAt / 現在日からの自動生成禁止（明示証拠のみ）
  */
 data class RawUniverseMembershipObservation(
     val universeKey: String,
@@ -92,9 +95,15 @@ data class RawUniverseMembershipObservation(
     /**
      * Change-log coverage 開始日（Universe inception）。
      * COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION のとき必須。
-     * その日の直前 membership は空、以降の ADD/REMOVE が完全であるという主張に紐づく。
+     * その日の直前 membership は空という主張に紐づく。
      */
     val coverageStartDate: LocalDate? = null,
+    /**
+     * Change-log coverage 終了日（その日付まで ADD/REMOVE が欠損なく完全である最終日）。
+     * COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION のとき必須。
+     * 最後の event 日 / fetchedAt / 現在日 / max effectiveDate からの推測禁止。
+     */
+    val coverageThroughDate: LocalDate? = null,
 ) {
     init {
         require(universeKey.isNotBlank()) { "universeKey must not be blank" }
@@ -117,11 +126,19 @@ data class RawUniverseMembershipObservation(
             }
         }
         when (completeness) {
-            ObservationCompleteness.COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION ->
+            ObservationCompleteness.COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION -> {
                 require(coverageStartDate != null) {
                     "COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION requires coverageStartDate " +
                         "(explicit empty inception; do not invent initial emptiness)"
                 }
+                require(coverageThroughDate != null) {
+                    "COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION requires coverageThroughDate " +
+                        "(explicit coverage end; do not infer from max event / fetchedAt / today)"
+                }
+                require(!coverageStartDate.isAfter(coverageThroughDate)) {
+                    "coverageStartDate must be <= coverageThroughDate"
+                }
+            }
             ObservationCompleteness.SINGLE_SNAPSHOT,
             ObservationCompleteness.INCOMPLETE_OR_UNKNOWN,
             -> Unit
