@@ -14,13 +14,16 @@ import kotlin.test.assertTrue
 class HistoricalUniverseFailClosedTest {
     private val universe = "TEST_UNIVERSE"
     private val fetchedAt = Instant.parse("2026-09-11T12:00:00Z")
+    private val inception = LocalDate.of(2020, 1, 1)
 
     private fun change(
         type: UniverseObservationType,
         member: String,
         effective: LocalDate,
         knownAt: Instant,
-        completeness: ObservationCompleteness = ObservationCompleteness.COMPLETE_CHANGE_LOG,
+        completeness: ObservationCompleteness =
+            ObservationCompleteness.COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION,
+        coverageStart: LocalDate? = inception,
         ticker: String? = member,
     ): RawUniverseMembershipObservation =
         RawUniverseMembershipObservation(
@@ -42,6 +45,7 @@ class HistoricalUniverseFailClosedTest {
             sourceContentSha256 = null,
             evidenceStatus = EvidenceStatus.SYNTHETIC_FIXTURE_ONLY,
             completeness = completeness,
+            coverageStartDate = coverageStart,
         )
 
     private fun snapshot(
@@ -69,9 +73,10 @@ class HistoricalUniverseFailClosedTest {
             sourceContentSha256 = null,
             evidenceStatus = EvidenceStatus.SYNTHETIC_FIXTURE_ONLY,
             completeness = ObservationCompleteness.SINGLE_SNAPSHOT,
+            coverageStartDate = null,
         )
 
-    /** Scenario: A member from 2020-01-01, removed 2022-06-01; B added 2021-03-01. */
+    /** Explicit empty-inception complete log: A from 2020-01-01, B from 2021-03-01, A removed 2022-06-01. */
     private fun survivorshipChangeLog(): List<RawUniverseMembershipObservation> {
         val kA = Instant.parse("2019-12-15T21:00:00Z")
         val kB = Instant.parse("2021-02-20T21:00:00Z")
@@ -213,9 +218,26 @@ class HistoricalUniverseFailClosedTest {
     }
 
     @Test
-    fun changeUnknownBeforeKnownAtIsNotUsed() {
+    fun changeUnknownBeforeKnownAtIsNotUsedAsConfirmedEmptyMembers() {
         val rows = survivorshipChangeLog()
-        // B's knownAt is 2021-02-20; decision before that must not see B even if asOf is later.
+        // All events exist, but decisionAt is before every knownAt → not MEMBERS empty.
+        val result =
+            UniverseMembershipPocQuery.membersAt(
+                rows,
+                universe,
+                asOfDate = LocalDate.of(2021, 6, 1),
+                decisionAt = Instant.parse("2019-01-01T00:00:00Z"),
+            )
+        assertEquals(MembershipQueryStatus.UNUSABLE_KNOWN_AT, result.status)
+        assertTrue(result.memberExternalIds.isEmpty())
+        assertTrue(result.reason.contains("not a confirmed empty universe", ignoreCase = true))
+    }
+
+    @Test
+    fun relevantNotYetKnownChangeIsNotSilentlyDroppedToRebuildFromRemainder() {
+        val rows = survivorshipChangeLog()
+        // A's ADD is known; B's ADD is effective by asOf but knownAt > decisionAt.
+        // Must Fail-Closed — must NOT return MEMBERS {A} by dropping B.
         val result =
             UniverseMembershipPocQuery.membersAt(
                 rows,
@@ -223,6 +245,23 @@ class HistoricalUniverseFailClosedTest {
                 asOfDate = LocalDate.of(2021, 6, 1),
                 decisionAt = Instant.parse("2021-02-01T00:00:00Z"),
             )
+        assertEquals(MembershipQueryStatus.UNUSABLE_KNOWN_AT, result.status)
+        assertTrue(result.status != MembershipQueryStatus.MEMBERS)
+        assertTrue(result.reason.contains("not known at decisionAt", ignoreCase = true))
+    }
+
+    @Test
+    fun futureEffectiveNotYetKnownChangeDoesNotBlockAsOfMembership() {
+        val rows = survivorshipChangeLog()
+        // asOf before B's effective date; B not-yet-known is irrelevant to this asOf.
+        val result =
+            UniverseMembershipPocQuery.membersAt(
+                rows,
+                universe,
+                asOfDate = LocalDate.of(2020, 6, 1),
+                decisionAt = Instant.parse("2021-02-01T00:00:00Z"),
+            )
+        assertEquals(MembershipQueryStatus.MEMBERS, result.status)
         assertEquals(setOf("A"), result.memberExternalIds)
         assertFalse("B" in result.memberExternalIds)
     }
@@ -241,6 +280,7 @@ class HistoricalUniverseFailClosedTest {
                 asOfDate = LocalDate.of(2021, 3, 1),
                 decisionAt = knownAt,
             )
+        assertEquals(MembershipQueryStatus.MEMBERS, result.status)
         assertEquals(setOf("B"), result.memberExternalIds)
     }
 
@@ -265,7 +305,8 @@ class HistoricalUniverseFailClosedTest {
                 fetchedAt = Instant.parse("2026-09-11T12:00:00Z"),
                 sourceContentSha256 = null,
                 evidenceStatus = EvidenceStatus.SYNTHETIC_FIXTURE_ONLY,
-                completeness = ObservationCompleteness.COMPLETE_CHANGE_LOG,
+                completeness = ObservationCompleteness.COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION,
+                coverageStartDate = inception,
             )
         val result =
             UniverseMembershipPocQuery.membersAt(
@@ -275,6 +316,7 @@ class HistoricalUniverseFailClosedTest {
                 decisionAt = Instant.parse("2026-09-11T13:00:00Z"),
             )
         assertEquals(MembershipQueryStatus.UNUSABLE_KNOWN_AT, result.status)
+        assertTrue(result.reason.contains("not a confirmed empty universe", ignoreCase = true))
     }
 
     @Test
@@ -339,7 +381,6 @@ class HistoricalUniverseFailClosedTest {
     @Test
     fun delistedPastMemberIsNotDroppedBecauseAbsentFromCurrentSnapshot() {
         val rows = survivorshipChangeLog()
-        // After A removed, past query still returns A for 2020.
         val past =
             UniverseMembershipPocQuery.membersAt(
                 rows,
@@ -408,7 +449,8 @@ class HistoricalUniverseFailClosedTest {
                 fetchedAt = fetchedAt,
                 sourceContentSha256 = null,
                 evidenceStatus = EvidenceStatus.SYNTHETIC_FIXTURE_ONLY,
-                completeness = ObservationCompleteness.COMPLETE_CHANGE_LOG,
+                completeness = ObservationCompleteness.COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION,
+                coverageStartDate = inception,
             )
         val result =
             UniverseMembershipPocQuery.membersAt(
@@ -458,6 +500,7 @@ class HistoricalUniverseFailClosedTest {
                     LocalDate.of(2020, 1, 1),
                     knownAt,
                     completeness = ObservationCompleteness.INCOMPLETE_OR_UNKNOWN,
+                    coverageStart = null,
                 ),
             )
         val result =
@@ -497,6 +540,148 @@ class HistoricalUniverseFailClosedTest {
         assertEquals(setOf("A"), d202006.memberExternalIds)
         assertEquals(setOf("A", "B"), d202106.memberExternalIds)
         assertEquals(setOf("B"), d202301.memberExternalIds)
+    }
+
+    @Test
+    fun zeroKnownObservationsIsNotConfirmedEmptyUniverse() {
+        val rows = survivorshipChangeLog()
+        val result =
+            UniverseMembershipPocQuery.membersAt(
+                rows,
+                universe,
+                asOfDate = LocalDate.of(2021, 6, 1),
+                decisionAt = Instant.parse("2019-06-01T00:00:00Z"),
+            )
+        assertTrue(result.status != MembershipQueryStatus.MEMBERS)
+        assertEquals(MembershipQueryStatus.UNUSABLE_KNOWN_AT, result.status)
+        assertTrue(result.reason.contains("not a confirmed empty", ignoreCase = true))
+    }
+
+    @Test
+    fun effectiveChangeNotYetKnownBlocksMembershipDetermination() {
+        val early =
+            change(
+                UniverseObservationType.ADD,
+                "A",
+                LocalDate.of(2020, 1, 1),
+                Instant.parse("2019-12-15T21:00:00Z"),
+            )
+        val lateKnownRemoval =
+            change(
+                UniverseObservationType.REMOVE,
+                "A",
+                LocalDate.of(2020, 6, 1),
+                Instant.parse("2021-01-01T00:00:00Z"),
+            )
+        val result =
+            UniverseMembershipPocQuery.membersAt(
+                listOf(early, lateKnownRemoval),
+                universe,
+                asOfDate = LocalDate.of(2020, 12, 31),
+                decisionAt = Instant.parse("2020-07-01T00:00:00Z"),
+            )
+        // REMOVE is effective by asOf but unknown at decisionAt → cannot safely say A is still member.
+        assertEquals(MembershipQueryStatus.UNUSABLE_KNOWN_AT, result.status)
+        assertTrue(result.reason.contains("not known at decisionAt", ignoreCase = true))
+        assertTrue(result.status != MembershipQueryStatus.MEMBERS)
+    }
+
+    @Test
+    fun changeLogWithoutCompleteInceptionCoverageIsIndeterminate() {
+        val knownAt = Instant.parse("2020-01-01T00:00:00Z")
+        val rows =
+            listOf(
+                change(
+                    UniverseObservationType.ADD,
+                    "A",
+                    LocalDate.of(2020, 1, 1),
+                    knownAt,
+                    completeness = ObservationCompleteness.INCOMPLETE_OR_UNKNOWN,
+                    coverageStart = null,
+                ),
+                change(
+                    UniverseObservationType.ADD,
+                    "B",
+                    LocalDate.of(2021, 3, 1),
+                    knownAt,
+                    completeness = ObservationCompleteness.INCOMPLETE_OR_UNKNOWN,
+                    coverageStart = null,
+                ),
+            )
+        val result =
+            UniverseMembershipPocQuery.membersAt(
+                rows,
+                universe,
+                asOfDate = LocalDate.of(2021, 6, 1),
+                decisionAt = Instant.parse("2021-06-15T00:00:00Z"),
+            )
+        assertEquals(MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY, result.status)
+        assertTrue(result.reason.contains("COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION", ignoreCase = false))
+    }
+
+    @Test
+    fun changeLogWithMissingCoverageStartIsIndeterminate() {
+        val knownAt = Instant.parse("2020-01-01T00:00:00Z")
+        val ex =
+            kotlin.test.assertFailsWith<IllegalArgumentException> {
+                RawUniverseMembershipObservation(
+                    universeKey = universe,
+                    provider = "synthetic-fixture",
+                    officialIndexId = "TEST",
+                    observationType = UniverseObservationType.ADD,
+                    memberExternalId = "A",
+                    memberIdentifierType = "FIXTURE_ID",
+                    tickerRaw = "A",
+                    membershipEffectiveDate = LocalDate.of(2020, 1, 1),
+                    membershipEffectiveAt = null,
+                    announcedAt = null,
+                    knownAt = knownAt,
+                    knownAtStatus = HistoricalKnownAtStatus.RESOLVED_WITH_EVIDENCE,
+                    sourceDocumentId = "fixture",
+                    sourceUrl = null,
+                    fetchedAt = fetchedAt,
+                    sourceContentSha256 = null,
+                    evidenceStatus = EvidenceStatus.SYNTHETIC_FIXTURE_ONLY,
+                    completeness = ObservationCompleteness.COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION,
+                    coverageStartDate = null,
+                )
+            }
+        assertTrue(ex.message!!.contains("coverageStartDate"))
+    }
+
+    @Test
+    fun onlyExplicitEmptyInceptionCompleteLogMayRebuildMembership() {
+        val rows = survivorshipChangeLog()
+        assertTrue(
+            rows.all {
+                it.completeness == ObservationCompleteness.COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION &&
+                    it.coverageStartDate == inception
+            },
+        )
+        val result =
+            UniverseMembershipPocQuery.membersAt(
+                rows,
+                universe,
+                asOfDate = LocalDate.of(2021, 6, 1),
+                decisionAt = Instant.parse("2021-06-15T00:00:00Z"),
+            )
+        assertEquals(MembershipQueryStatus.MEMBERS, result.status)
+        assertEquals(setOf("A", "B"), result.memberExternalIds)
+        assertTrue(result.reason.contains("COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION"))
+    }
+
+    @Test
+    fun asOfBeforeCoverageStartIsIndeterminateNotEmptyUniverse() {
+        val rows = survivorshipChangeLog()
+        val result =
+            UniverseMembershipPocQuery.membersAt(
+                rows,
+                universe,
+                asOfDate = LocalDate.of(2019, 6, 1),
+                decisionAt = Instant.parse("2023-01-01T00:00:00Z"),
+            )
+        assertEquals(MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY, result.status)
+        assertTrue(result.reason.contains("before coverageStartDate", ignoreCase = true))
     }
 
     @Test

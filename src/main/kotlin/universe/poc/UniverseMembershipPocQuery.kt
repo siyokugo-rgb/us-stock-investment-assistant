@@ -9,7 +9,10 @@ import java.time.LocalDate
  * 禁止（推測しない）:
  * - current / 別日付 snapshot の過去（または別 asOf）適用
  * - knownAt 未解決観測の知識PIT利用
- * - 欠損 REMOVE を無限 membership と断定
+ * - known observation 0件を「確定空 Universe」と扱うこと
+ * - effective 済みだが未 known の change を黙って落として残件だけで確定すること
+ * - coverage / inception 未証明 change log からの membership 再構築
+ * - 最初の ADD 以前を暗黙に空と仮定すること
  * - ticker → SecurityId
  * - effectiveDate / fetchedAt からの knownAt 生成
  */
@@ -32,7 +35,9 @@ object UniverseMembershipPocQuery {
         if (scoped.isEmpty()) {
             return MembershipQueryResult(
                 status = MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY,
-                reason = "no observations for universeKey=$universeKey",
+                reason =
+                    "no observations for universeKey=$universeKey; " +
+                        "indeterminate — not a confirmed empty universe",
             )
         }
 
@@ -41,7 +46,31 @@ object UniverseMembershipPocQuery {
                 status = MembershipQueryStatus.UNUSABLE_KNOWN_AT,
                 reason =
                     "one or more observations have historical knownAt UNRESOLVED_UNUSABLE; " +
-                        "cannot use for knowledge PIT at decisionAt",
+                        "cannot use for knowledge PIT at decisionAt; " +
+                        "not a confirmed empty universe",
+            )
+        }
+
+        // Effective-as-of changes that are not yet known at decisionAt block safe determination.
+        val notYetKnownButEffective =
+            scoped.filter { obs ->
+                val effective = obs.membershipEffectiveDate
+                val knownAt = obs.knownAt
+                (
+                    obs.observationType == UniverseObservationType.ADD ||
+                        obs.observationType == UniverseObservationType.REMOVE
+                    ) &&
+                    effective != null &&
+                    !effective.isAfter(asOfDate) &&
+                    (knownAt == null || decisionAt.isBefore(knownAt))
+            }
+        if (notYetKnownButEffective.isNotEmpty()) {
+            return MembershipQueryResult(
+                status = MembershipQueryStatus.UNUSABLE_KNOWN_AT,
+                reason =
+                    "one or more ADD/REMOVE events are effective on/before asOfDate=$asOfDate " +
+                        "but not known at decisionAt; asOf membership cannot be safely determined; " +
+                        "not a confirmed empty universe",
             )
         }
 
@@ -51,10 +80,13 @@ object UniverseMembershipPocQuery {
                 knownAt != null && !decisionAt.isBefore(knownAt)
             }
         if (known.isEmpty()) {
+            // Observations exist for this universe, but none are known yet at decisionAt.
+            // That is indeterminate/unusable — never "confirmed empty members".
             return MembershipQueryResult(
-                status = MembershipQueryStatus.MEMBERS,
-                memberExternalIds = emptySet(),
-                reason = "no observations known at decisionAt",
+                status = MembershipQueryStatus.UNUSABLE_KNOWN_AT,
+                reason =
+                    "observations exist for universeKey=$universeKey but none are known at " +
+                        "decisionAt; indeterminate/unusable — not a confirmed empty universe",
             )
         }
 
@@ -106,21 +138,63 @@ object UniverseMembershipPocQuery {
         if (changes.isEmpty()) {
             return MembershipQueryResult(
                 status = MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY,
-                reason = "no change events available",
+                reason =
+                    "no change events available; indeterminate — not a confirmed empty universe",
             )
         }
-        if (changes.any { it.completeness != ObservationCompleteness.COMPLETE_CHANGE_LOG }) {
+        if (changes.any {
+                it.completeness != ObservationCompleteness.COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION
+            }
+        ) {
             return MembershipQueryResult(
                 status = MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY,
                 reason =
-                    "change log completeness is not COMPLETE_CHANGE_LOG; " +
-                        "missing REMOVE must not be treated as perpetual membership",
+                    "change log lacks COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION coverage evidence; " +
+                        "refusing to invent empty initial state or perpetual membership from " +
+                        "incomplete / unlabeled logs",
             )
         }
         if (changes.any { it.membershipEffectiveDate == null }) {
             return MembershipQueryResult(
                 status = MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY,
                 reason = "change event missing membershipEffectiveDate; refuse to invent",
+            )
+        }
+        if (changes.any { it.coverageStartDate == null }) {
+            return MembershipQueryResult(
+                status = MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY,
+                reason =
+                    "coverageStartDate missing; initial state / coverage start unknown; " +
+                        "membership rebuild forbidden",
+            )
+        }
+
+        val coverageStarts = changes.map { it.coverageStartDate }.toSet()
+        if (coverageStarts.size != 1) {
+            return MembershipQueryResult(
+                status = MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY,
+                reason =
+                    "inconsistent coverageStartDate across change-log rows; refuse auto-resolve",
+            )
+        }
+        val coverageStart = coverageStarts.single()!!
+        if (asOfDate.isBefore(coverageStart)) {
+            return MembershipQueryResult(
+                status = MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY,
+                reason =
+                    "asOfDate=$asOfDate is before coverageStartDate=$coverageStart; " +
+                        "outside proven coverage — not a confirmed empty universe",
+            )
+        }
+        if (changes.any {
+                val effective = it.membershipEffectiveDate!!
+                effective.isBefore(coverageStart)
+            }
+        ) {
+            return MembershipQueryResult(
+                status = MembershipQueryStatus.INDETERMINATE_INCOMPLETE_HISTORY,
+                reason =
+                    "change event effective before coverageStartDate; coverage claim inconsistent",
             )
         }
 
@@ -147,6 +221,7 @@ object UniverseMembershipPocQuery {
             )
         }
 
+        // Explicit empty inception at coverageStartDate — only because completeness claims it.
         val members = linkedSetOf<String>()
         val ordered =
             changes.sortedWith(
@@ -168,7 +243,10 @@ object UniverseMembershipPocQuery {
         return MembershipQueryResult(
             status = MembershipQueryStatus.MEMBERS,
             memberExternalIds = members,
-            reason = "COMPLETE_CHANGE_LOG membership as of $asOfDate",
+            reason =
+                "COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION membership as of $asOfDate " +
+                    "(coverageStartDate=$coverageStart; synthetic/fixture completeness is not " +
+                    "provider proof)",
         )
     }
 

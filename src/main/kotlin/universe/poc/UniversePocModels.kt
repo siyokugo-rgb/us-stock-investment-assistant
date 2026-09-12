@@ -17,12 +17,23 @@ enum class UniverseObservationType {
 }
 
 /**
- * 観測の完全性主張。
- * 欠損 REMOVE を「membership 継続」と断定できるのは [COMPLETE_CHANGE_LOG] のみ。
+ * Feed / coverage 全体の完全性証拠。
+ *
+ * 単一 row の装飾ではなく、「どの期間を空 inception から欠損なく覆うか」の主張。
+ * synthetic fixture の complete はテスト上の仮定であり、実 Provider 完全性の証明ではない。
  */
 enum class ObservationCompleteness {
+    /** 単発 snapshot。その as-of 以外へ外挿禁止 */
     SINGLE_SNAPSHOT,
-    COMPLETE_CHANGE_LOG,
+
+    /**
+     * coverageStartDate が Universe inception であり、
+     * inception 直前 membership は空、そこから全 ADD/REMOVE が欠損なく存在する、
+     * という明示主張がある場合のみ change log 再構築を許可する。
+     */
+    COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION,
+
+    /** coverage 開始・初期状態・欠損有無が未証明。membership 再構築禁止 */
     INCOMPLETE_OR_UNKNOWN,
 }
 
@@ -57,6 +68,7 @@ enum class ReconstructionMode {
  * - [membershipEffectiveDate] と [knownAt] を混同しない
  * - knownAt 未解決なら知識PITに使えない
  * - [fetchedAt] は保有PITのみ
+ * - [coverageStartDate] は COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION のとき必須
  */
 data class RawUniverseMembershipObservation(
     val universeKey: String,
@@ -77,6 +89,12 @@ data class RawUniverseMembershipObservation(
     val sourceContentSha256: String?,
     val evidenceStatus: EvidenceStatus,
     val completeness: ObservationCompleteness,
+    /**
+     * Change-log coverage 開始日（Universe inception）。
+     * COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION のとき必須。
+     * その日の直前 membership は空、以降の ADD/REMOVE が完全であるという主張に紐づく。
+     */
+    val coverageStartDate: LocalDate? = null,
 ) {
     init {
         require(universeKey.isNotBlank()) { "universeKey must not be blank" }
@@ -97,6 +115,16 @@ data class RawUniverseMembershipObservation(
             require(membershipEffectiveDate != null) {
                 "SNAPSHOT requires membershipEffectiveDate (as-of date of the snapshot claim)"
             }
+        }
+        when (completeness) {
+            ObservationCompleteness.COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION ->
+                require(coverageStartDate != null) {
+                    "COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION requires coverageStartDate " +
+                        "(explicit empty inception; do not invent initial emptiness)"
+                }
+            ObservationCompleteness.SINGLE_SNAPSHOT,
+            ObservationCompleteness.INCOMPLETE_OR_UNKNOWN,
+            -> Unit
         }
     }
 }

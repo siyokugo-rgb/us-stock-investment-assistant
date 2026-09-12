@@ -217,12 +217,33 @@ Package: `universe.poc`
 
 - `RawUniverseMembershipObservation`
 - `UniverseObservationType` = SNAPSHOT / ADD / REMOVE
-- `ObservationCompleteness` = SINGLE_SNAPSHOT / COMPLETE_CHANGE_LOG / INCOMPLETE_OR_UNKNOWN
+- `ObservationCompleteness` = SINGLE_SNAPSHOT / COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION / INCOMPLETE_OR_UNKNOWN
+- `coverageStartDate` (required when completeness is COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION)
 - `HistoricalKnownAtStatus`
 - `UniverseSourceCatalog`
 - Fail-Closed query: `UniverseMembershipPocQuery`
 
 No production Universe aggregate. No SecurityId fields.
+
+### 19.1 Completeness meaning (feed / coverage evidence)
+
+`ObservationCompleteness` is **not** a decorative single-row flag. It is a claim about **feed/coverage evidence as a whole**:
+
+| Value | Meaning |
+| --- | --- |
+| `SINGLE_SNAPSHOT` | Exact as-of snapshot only; no extrapolation to other dates |
+| `COMPLETE_FROM_EMPTY_UNIVERSE_INCEPTION` | Explicit claim that `coverageStartDate` is Universe inception, membership immediately before that date is **empty**, and all ADD/REMOVE from that inception through the covered history exist without gaps |
+| `INCOMPLETE_OR_UNKNOWN` | Coverage start and/or initial state unproven; **membership rebuild forbidden** |
+
+Rules:
+
+1. **Synthetic fixture “complete” is a test assumption only.** It does **not** prove a real Provider feed is complete.
+2. If initial state / coverage start is unknown → do **not** rebuild membership (return `INDETERMINATE_INCOMPLETE_HISTORY`).
+3. Do **not** invent emptiness before the first ADD. Do **not** treat a vague “COMPLETE” enum name as proof.
+4. **Unknown universe ≠ empty universe.** Zero observations known at `decisionAt` must **not** return `MEMBERS` with an empty set as a confirmed empty membership.
+5. An ADD/REMOVE with `membershipEffectiveDate <= asOfDate` but `knownAt > decisionAt` must Fail-Closed (`UNUSABLE_KNOWN_AT`); do not silently drop it and rebuild from the remainder. Future-effective events (`effectiveDate > asOfDate`) do not affect that asOf determination.
+
+Data Contract §6 is **not weakened**.
 
 ## 20. Fixture / QA
 
@@ -235,19 +256,24 @@ Network-free tests cover (among others):
 5. REMOVE boundary (member day-before; not on/after)  
 6–7. pre/post removal membership  
 8. future ADD not applied to past asOf  
-9. unknown before knownAt  
-10. knownAt == decisionAt allowed  
-11. fetchedAt ≠ knownAt  
-12. current snapshot not back-applied  
-13. no SecurityId from ticker  
-14. ticker recycle keeps distinct external ids  
-15. delisted past member retained in past query  
-16. duplicate rows not collapsed  
-17. conflicting ADD/REMOVE not auto-resolved  
-18. unknown effectiveDate not invented  
-19. unknown knownAt not generated  
-20. incomplete log ≠ perpetual membership  
-21. full regression of prior suite  
+9. zero known observations ≠ confirmed empty (`UNUSABLE_KNOWN_AT`)  
+10. relevant not-yet-known effective change Fail-Closed (not silent drop)  
+11. knownAt == decisionAt allowed  
+12. fetchedAt ≠ knownAt  
+13. current snapshot not back-applied  
+14. no SecurityId from ticker  
+15. ticker recycle keeps distinct external ids  
+16. delisted past member retained in past query  
+17. duplicate rows not collapsed  
+18. conflicting ADD/REMOVE not auto-resolved  
+19. unknown effectiveDate not invented  
+20. unknown knownAt not generated  
+21. incomplete / unlabeled change log → INDETERMINATE (no perpetual membership)  
+22. missing coverageStart on “complete” claim rejected  
+23. only explicit empty-inception complete synthetic log may rebuild  
+24. asOf before coverageStart → INDETERMINATE (not empty universe)  
+25. survivorship timeline 2020=A / 2021=A+B / 2023=B  
+26. full regression of prior suite  
 
 ## 21. Live / document evidence vs unit tests
 
