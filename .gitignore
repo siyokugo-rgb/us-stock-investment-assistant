@@ -10,3 +10,9 @@ local.properties
 *.class
 .DS_Store
 kotlin-js-store/
+.android-sdk/
+*.apk
+*.ap_
+*.aab
+android-smoke/build/
+
