@@ -13,7 +13,8 @@ Android UI、戦略実装、実データ戦略 Backtest は行わない。
 成果物は **Android SDK に依存しない最小の PIT-safe Kotlin/JVM core** に加え、SEC / Price / Dividend / Historical Universe の **Feasibility PoC（総合 PARTIAL）** である。
 
 最新の全体 Gate 判定: [`docs/feasibility-gate-review.md`](docs/feasibility-gate-review.md)。  
-**実データ戦略 Backtest は NO-GO。** 「テスト PASS」≠「Backtest 可能」。
+**実データ戦略 Backtest は NO-GO。** 「テスト PASS」≠「Backtest 可能」。  
+**Android UI は Out of scope。** 一方 **Android Core Compatibility は UNVERIFIED（Medium）** — JVM core の Android 実行可能性は未確認（UI 実装とは別）。
 
 ## 運用前提（仮決め）
 

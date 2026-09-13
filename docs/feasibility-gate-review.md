@@ -47,9 +47,20 @@ Merged feasibility artifacts on `main`:
 | Production providers | Not started |
 | Backtest infrastructure | Not started |
 | Strategy validation | Not started |
-| Android / operations | Out of scope |
+| Android UI / Compose / production app | **Out of scope** (correct to defer) |
+| Android Core Compatibility | **UNVERIFIED** (technical risk; not yet tested) |
+| Broker operations (Rakuten) | Out of scope for this gate |
 
-**Not here yet:** real strategy backtests, production mapping of PoC payloads, broker execution.
+### Android UI vs Android Core Compatibility (do not conflate)
+
+| Track | Meaning | Status |
+| --- | --- | --- |
+| **A. Android UI / Compose / production app** | Screens, navigation, Room, network UX, product shell | **Out of scope** now |
+| **B. Android Core Compatibility** | Whether the current pure Kotlin core can run on Android (DEX/build, call from an app module, no JVM-only APIs) | **UNVERIFIED** — never exercised on Android |
+
+The final product is Android, but today’s core is `kotlin("jvm")` + JDK 17 toolchain with **no** Android Gradle Plugin, Android module, or device test. That gap is a **compatibility risk**, not a reason to start UI work, and **not** a direct Real Backtest NO-GO reason.
+
+**Not here yet:** real strategy backtests, production mapping of PoC payloads, broker execution, Android UI.
 
 ---
 
@@ -103,6 +114,42 @@ Merged feasibility artifacts on `main`:
 | N. ¥10,000 execution constraints | SPEC ONLY | README / phase-0 | N/A | Absent | Not required for engine research | Ops Critical later | Defer to pre-production |
 | O. Rakuten Securities | SPEC ONLY | manual broker assumption | N/A | Absent | Ops only | Ops High later | Defer |
 | P. Backtest engine | ABSENT | README explicit | N/A | Absent | No engine yet | Infra High | May start **synthetic** engine only |
+| Q. Android Core Compatibility | **UNVERIFIED** | `kotlin("jvm")` / JVM toolchain 17; no AGP / Android module / device test | N/A | Not proven on Android | **None** — does not stop data contracts or synthetic engine research | **Medium** | Minimal Android compatibility smoke test (no UI) |
+
+---
+
+## 4.1 Android Core Compatibility smoke test (future minimal check)
+
+**Purpose:** prove the **pure core** can run on Android. This is **not** UI development and **not** product completion.
+
+### In scope (candidates)
+
+- An Android application module can depend on the current JVM/core artifacts  
+- DEX / Android build succeeds  
+- Call pure core types from Android (e.g. `SecurityId`, `IssuerId`, `DailyPrice`, `DividendEvent`, `RawFinancialFact`, `UniverseMembershipPocQuery` — names as they exist on `main`)  
+- `BigDecimal` / `LocalDate` / `Instant` (and similar) behave under the chosen Android min/target conditions  
+- No accidental JVM-only API dependency  
+- Run **one fixed fixture** on a real device (or emulator) as a smoke execution  
+
+### Explicitly forbidden in that smoke
+
+- Full UI / Compose design  
+- Room  
+- Live API connectivity  
+- Strategy screens / production app architecture  
+
+### Device positioning
+
+Final confirmation should include a real Android device. Gate documents must **not** hard-depend on a specific handset model. A device smoke only shows “core runs on Android”; it does **not** prove UI readiness or production readiness.
+
+### Phase / gate impact of UNVERIFIED compatibility
+
+| Question | Answer |
+| --- | --- |
+| Blocks Phase -1 full completion? | **Auxiliary risk** — yes, Phase -1 is not fully closed while core-on-Android is unproven |
+| Direct reason for Real Backtest NO-GO? | **No** |
+| Strategy validation blocker? | **No** |
+| Required before final Android product? | **Yes** |
 
 ---
 
@@ -152,6 +199,12 @@ Only items that truly stop **real-data strategy validation** or make returns fal
 | Vendor permanent ID ↔ SecurityId join design | Mapping ops |
 | Quality metric definition | Strategy later |
 | Engine infrastructure absence | Can start synthetic, not real validation |
+
+### Medium (product-path risk; not a real-backtest stopper)
+
+| Item | Why Medium |
+| --- | --- |
+| **Q. Android Core Compatibility UNVERIFIED** | Final product is Android; current core is JVM/JDK 17 only. Does **not** block data contracts or synthetic engine research. Required before Android product work. |
 
 ---
 
@@ -267,11 +320,13 @@ Treat as **operations gate**, not current Critical for engine scaffolding.
 
 ## 16. Next minimal work (ordered)
 
-1. **Document status hygiene** (this review) — this PR.  
-2. **Corporate Action feasibility PoC** (split first; Fail-Closed with raw prices).  
-3. **Price knownAt/currency entitlement decision** (keep Fail-Closed; no fake mapper).  
-4. Optionally: **synthetic Backtest engine scaffolding** (clearly labeled non-validation).  
-5. **Do not** start Dogs/QDR/Quality/Android/provider production.
+1. **Gate Review finalize** (this PR / document lock).  
+2. **Android Core Compatibility smoke test** — short feasibility only (module reference + DEX/build + one fixture on device/emulator). **No** Android product implementation, Compose, Room, or live APIs.  
+3. **Corporate Action Feasibility PoC** (split first; Fail-Closed with raw prices).  
+4. **Price knownAt / currency entitlement decision** (keep Fail-Closed; no fake mapper).  
+5. If needed: **synthetic Backtest engine infrastructure** (clearly labeled non-validation).  
+
+**Still forbidden next:** Dogs / QDR / Quality strategies, provider production, Android UI / Compose app build-out.
 
 ---
 
@@ -281,8 +336,9 @@ Treat as **operations gate**, not current Critical for engine scaffolding.
 | --- | --- |
 | Real PIT strategy Backtest GO? | **NO-GO** |
 | Synthetic engine infra GO? | **Conditional YES** (must not claim validation) |
-| Phase -1 complete? | **NO** — feasibility incomplete (PARTIAL PoCs remain) |
-| Phase 0 proceed? | **YES** — continue locking contracts / PoCs; do not jump to strategies |
+| Android Core Compatibility verified? | **NO** (UNVERIFIED; Medium) — does **not** by itself cause Real Backtest NO-GO |
+| Phase -1 complete? | **NO** — feasibility incomplete (PARTIAL PoCs + unverified Android core compatibility) |
+| Phase 0 proceed? | **YES** — continue locking contracts / PoCs; do not jump to strategies or Android UI |
 
 ---
 
@@ -290,10 +346,17 @@ Treat as **operations gate**, not current Critical for engine scaffolding.
 
 | Gate | Result |
 | --- | --- |
-| Phase -1 complete? | **Not complete** (expected: many PARTIAL/FAIL free entitlements) |
+| Phase -1 complete? | **Not complete** (PARTIAL entitlements + Android Core Compatibility UNVERIFIED as auxiliary risk) |
 | Phase -1 valuable? | **Yes** — safety boundaries now formal on `main` |
-| Phase 0 may continue? | **Yes** (spec/contract/PoC tightening) |
-| Phase 1 production / strategy? | **No** |
+| Phase 0 may continue? | **Yes** (spec/contract/PoC tightening; short Android smoke allowed) |
+| Phase 1 production / strategy / Android UI? | **No** |
+
+Android Core Compatibility UNVERIFIED:
+
+- **does** impede declaring Phase -1 fully closed (auxiliary technical risk)  
+- **does not** directly justify Real Backtest NO-GO  
+- **is not** a strategy-validation blocker by itself  
+- **is required** before advancing to a final Android product  
 
 ---
 
@@ -301,10 +364,10 @@ Treat as **operations gate**, not current Critical for engine scaffolding.
 
 | Role | Judgment |
 | --- | --- |
-| SE | **PARTIAL / NO-GO for real backtest.** Boundaries good; entitlements missing. Next: CA + price knownAt path. |
-| Programmer | Core + PoCs appropriately minimal; **do not implement strategies yet**. Synthetic engine optional. |
+| SE | **PARTIAL / NO-GO for real backtest.** Boundaries good; entitlements missing. Next after gate lock: Android core smoke → CA → price knownAt path. |
+| Programmer | Core + PoCs appropriately minimal; **do not implement strategies or Android UI yet**. Short Android compatibility smoke is allowed; synthetic engine optional. |
 | Data Integrity | Fail-Closed posture strong; PARTIAL ≠ PASS. Keep unknown≠empty and coverage windows. |
-| QA | Fixture suites prove boundaries, not market truth. Prior 228 tests ≠ backtest readiness. |
+| QA | Fixture suites prove JVM boundaries, not market truth and **not** Android runtime compatibility. Prior 228 tests ≠ backtest readiness ≠ Android readiness. |
 
 ---
 
@@ -318,3 +381,5 @@ This review does **not** claim:
 - Corporate Actions are handled  
 - Backtests may start on real data  
 - ¥10,000 Rakuten path is validated  
+- current JVM core is proven Android-compatible  
+- Android UI / product work should start  
