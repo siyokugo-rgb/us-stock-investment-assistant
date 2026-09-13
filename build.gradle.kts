@@ -1,13 +1,11 @@
 plugins {
-    kotlin("jvm") version "2.1.21"
+    kotlin("jvm")
 }
 
 group = "usstock"
 version = "0.1.0-phase0"
 
-repositories {
-    mavenCentral()
-}
+// Maven repositories: settings.gradle.kts (dependencyResolutionManagement / PREFER_SETTINGS).
 
 dependencies {
     testImplementation(kotlin("test"))
