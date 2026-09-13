@@ -350,6 +350,22 @@ CompanyFacts raw fact を将来の財務 metric へ安全に接続するため�
 **価格だけ split-adjust して株数を調整しないことは禁止。**  
 今回はモデル完全実装をしない。Identifier 履歴は入口に過ぎない。
 
+### 5.1 Split / Reverse Split Feasibility PoC（追記・契約を弱めない）
+
+詳細: [`corporate-action-split-poc.md`](corporate-action-split-poc.md)、ソース調査: [`stock-split-source-research.md`](stock-split-source-research.md)。
+
+PoC パッケージ: `corporateaction.poc`（`SplitRatio`, `RawSplitObservation`, `SplitQuantityMath`）。
+
+追記のみ（既存 §5 を緩和しない）:
+
+1. ratio は `oldShares` / `newShares`（`BigDecimal`）で向きを明示する。曖昧文字列の推測解釈禁止。
+2. `announcedDate` / `announcedAt` / `effectiveDate` / `exDate` / `recordDate` / `fetchedAt` を分離する。effective / ex / LocalDate 00:00 / fetchedAt を historical `knownAt` にしてはならない。根拠 Instant が無ければ `historicalKnownAtStatus = UNRESOLVED`。
+3. 知識PIT（split 予定を当時知っていたか）と、effective 後の保有数量会計適用は別責務である。
+4. Provider symbol から `SecurityId` を生成しない。通常の split / reverse は `SecurityId` 継続のまま。
+5. raw OHLC の段差を split 無しで自動補正しない。価格だけ adjust して数量未変更は禁止（§5 本体どおり）。
+6. 同一 event の ratio / effectiveDate 衝突は latest-wins 禁止。候補保持または UNRESOLVED。
+7. 無料の formal PIT-safe 歴史 split フィードは本 PoC 時点で確認できていない。それを理由に Fail-Closed を緩めてはならない。
+
 ---
 
 ## 6. Historical Universe Contract（Critical）
