@@ -7,10 +7,13 @@
 
 ## 現在の開発段階
 
-**Phase -1：成立性検証** と **Phase 0：仕様仮決め**。
+**Phase -1：成立性検証** と **Phase 0：仕様仮決め**（主段階）。
 
-Android UI、実データ API 接続、戦略実装は行わない。  
-今回の成果物は、**Android SDK に依存しない最小の PIT-safe Kotlin/JVM core** である。
+Android UI、戦略実装、実データ戦略 Backtest は行わない。  
+成果物は **Android SDK に依存しない最小の PIT-safe Kotlin/JVM core** に加え、SEC / Price / Dividend / Historical Universe の **Feasibility PoC（総合 PARTIAL）** である。
+
+最新の全体 Gate 判定: [`docs/feasibility-gate-review.md`](docs/feasibility-gate-review.md)。  
+**実データ戦略 Backtest は NO-GO。** 「テスト PASS」≠「Backtest 可能」。
 
 ## 運用前提（仮決め）
 
@@ -84,7 +87,7 @@ Android UI、実データ API 接続、戦略実装は行わない。
 
 詳細は [`docs/phase-0-spec.md`](docs/phase-0-spec.md)。  
 実データ接続前の Data Contract は [`docs/data-contract.md`](docs/data-contract.md)（取得可能データと、投資判断・バックテストへ使ってよいデータの区別を含む）。
-## Survivorship Bias は未解決 Critical
+## Survivorship Bias は未解決 Critical（Universe 供給）
 
 将来の Quality 候補 Universe は次の和集合を予定する。
 
@@ -94,7 +97,8 @@ Android UI、実データ API 接続、戦略実装は行わない。
 - S&P 500 Quality
 
 **現在の構成銘柄を過去バックテストへ流用してはならない。**  
-構成銘柄の Point-in-Time 履歴は未整備であり、Survivorship Bias は Critical のまま残っている。
+Historical Universe PoC（PR #11）で Fail-Closed 境界は確定したが、**無料 Mode A PIT membership は未成立（PARTIAL / mostly FAIL）**。  
+したがって Universe 依存戦略の Survivorship は Critical のまま。詳細は [`docs/historical-universe-poc.md`](docs/historical-universe-poc.md)。
 
 V1 では銀行・証券・保険・REIT を一般事業会社と同じ Quality 式では評価しない（Quality 自体は未実装・未定義）。
 
@@ -139,19 +143,20 @@ CIK は Issuer 側 `IssuerIdentifier`（10 桁ゼロ埋め正規形）。Issuer 
 ## 未実装範囲
 
 - Android / Jetpack Compose
-- 実データ API（SEC, Tiingo, Yahoo Finance 等）および HTTP 通信
-- Database
+- 本番 Provider / 永続化 / Security master 運用
 - Quality Score / QDR / Dogs / その他戦略
-- Backtest Engine
+- Backtest Engine（synthetic infra も未着手）
 - News / FX 共通化 / 楽天証券 API / 自動発注
 - AI / ML
-- Corporate Action の完全実装
+- Corporate Action 実装（契約のみ）
 - Web dashboard / Node.js / Express / React / Vite
 - SMA / RSI 等のテクニカル指標
 - BUY / HOLD / SELL のルールベース判定
 - synthetic / mock market fallback
-- adjusted price
-- 財務数値そのもの
+- adjusted price を執行価格として使うこと
+- 財務数値の最終値 resolver / Quality 指標
+
+**注:** SEC EDGAR / Alpha Vantage / Historical Universe の **Feasibility PoC HTTP client は存在する**。これらは本番 Provider でも Backtest 許可でもない（総合 PARTIAL）。
 
 ## ビルド / テスト
 

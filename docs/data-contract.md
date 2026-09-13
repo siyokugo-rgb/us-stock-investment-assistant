@@ -556,21 +556,24 @@ Critical / High の意味的バグとして、現行コードを直ちに壊す�
 
 ## 14. 残課題と PoC 方針
 
-### Critical（残）
+### Critical（残）— `main` @ `3b55acb554f7456a2eeb1a283d56e03c0c09d9ef` 再監査
 
-1. Historical membership の入手・ライセンス未確定（Survivorship）
-2. `knownAt` の根拠を実 Provider で証明していない
-3. Issuer/Security 分離が未実装（設計のみ）
-4. Corporate Action 未実装
-5. Quality 定義なし / QDR 未検証
+1. Historical membership の入手・ライセンス未確定（Survivorship / free Mode A 未成立）
+2. Price / Dividend / Fundamentals の historical `knownAt` 根拠を実 Provider で CONFIRMED できていない
+3. Corporate Action 未実装（契約のみ。Identifier 履歴 ≠ CA 解決）
+4. Quality 定義なし / QDR 未検証
+5. Price currency 根拠未解決（`DailyPrice` mapping blocker）
+
+**RESOLVED:** IssuerId / SecurityId 分離、Security 側 CIK 削除、FundamentalSnapshot issuerId 化は core 実装済み（旧「Issuer/Security 分離が未実装」は取り下げ）。全体整理は [`feasibility-gate-review.md`](feasibility-gate-review.md)。
 
 ### High（残）
 
 1. stale 閾値未定義
 2. Exchange / session カレンダー未接続
-3. acceptedAt と filedAt の使い分け未実装
-4. 配当 Grade の判定手続きが未運用
+3. acceptedAt と filedAt の使い分け（CONFIRMED knownAt 化は禁止のまま）
+4. 配当 Grade A/B の判定手続きが未運用（PoC は Grade C）
 5. 0 価格を Quality で落とす実装が未着手（契約のみ）
+6. Security master（delisted 含む）履歴の完全性未確立
 
 ### 実データ PoC へ進めるか
 

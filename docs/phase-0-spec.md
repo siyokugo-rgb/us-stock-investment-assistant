@@ -228,13 +228,19 @@ FundamentalSnapshot:
 
 ## 7. 現在の未解決 Issue
 
-### Critical
+### Critical（`main` @ `3b55acb554f7456a2eeb1a283d56e03c0c09d9ef` 時点で再定義）
 
-1. **Survivorship Bias** — 候補 Universe の Point-in-Time 構成履歴がない。
-2. **Data Contract 未設計** — `knownAt` の根拠（開示時刻、ベンダー配信時刻、公式発表時刻）が未定義。モデルはあるが実データの正しさは未証明。
-3. **Security / Issuer 横断突合** — Ticker / vendor id / CIK（Issuer 側）の衝突時にどう Fail-Closed するかの運用規則が未確定。自動解決はしないと決めただけである。CIK は `IssuerIdentifier` のみ。
-4. **Corporate Action** — 分割、合併、Ticker 変更の完全な履歴モデルがない。Identifier 履歴はその入口に過ぎない。
+1. **Survivorship / Historical Universe Mode A** — Fail-Closed 境界は PoC 済みだが、無料/契約確認済み PIT membership は未成立（[`historical-universe-poc.md`](historical-universe-poc.md)、総合 PARTIAL）。
+2. **Price historical knownAt / currency mapping** — Price PoC は PARTIAL。`DailyPrice` へ安全に map できない（[`price-data-poc.md`](price-data-poc.md)）。
+3. **Corporate Action 未実装** — 契約のみ。Identifier 履歴は CA 解決ではない。raw price の多日次リターンは未安全。
+4. **Dividend Grade A/B knownAt** — Dividend PoC は Grade C / PARTIAL。QDR・Capture・Kings Mode B の意思決定入力には使えない。
 5. **Quality 未定義** — 銀行・証券・保険・REIT を含む評価式が無い。QDR は仮説のまま。
+
+**RESOLVED（旧 Critical から除外）:** Data Contract 文書自体は存在する（[`data-contract.md`](data-contract.md)）。IssuerId / SecurityId 分離・Security 側 CIK 削除・FundamentalSnapshot issuerId 化は core 実装済み。詳細は [`feasibility-gate-review.md`](feasibility-gate-review.md)。
+
+### 運用上なお未確定（Critical ではないが重要）
+
+- **Security / Issuer 横断突合の運用 playbook** — 自動解決しないことは確定。衝突時の人手/運用手順は未確定。CIK は `IssuerIdentifier` のみ。
 
 ### High
 
