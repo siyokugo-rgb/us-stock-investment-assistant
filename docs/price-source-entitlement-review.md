@@ -406,7 +406,7 @@ Join 必須: external identifier + validity period + provenance + PIT 条件。*
 
 1. 本レビューを Draft PR として固定し、Real Backtest NO-GO を再確認する。  
 2. （任意・別 PR）forward-only research の **設計ノート**のみ：SLA cutoff + self-archive knownAt の定義案（実装禁止のまま）。  
-3. Security master entitlement の受け入れ基準を 1 ページで定義（FIGI + validity + currency evidence）。  
+3. Security Master Acceptance Criteria は [`security-master-acceptance-criteria.md`](security-master-acceptance-criteria.md) で正式化（本項目の受け入れ基準定義）。  
 4. CA は既存 PARTIAL のまま；無料 PIT-safe CA が無い事実を維持。  
 5. ¥10k 制約下では institutional を「技術オプション」として記録し、採用判断は経済レビューに分離。
 
