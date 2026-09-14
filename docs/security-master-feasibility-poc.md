@@ -66,8 +66,8 @@
 | Tiingo | PARTIAL (`permaTicker`) | FAIL (no change ledger) | PARTIAL (`exchangeCode`) | FAIL/PARTIAL (`reportingCurrency`≠trading; EOD metaにcurrency無し) | PARTIAL (`isActive` / endDate) | UNKNOWN | FAIL | FAIL | free / paid tiers | **FAIL** | **PARTIAL** | **PARTIAL** |
 | Massive/Polygon | PASS (composite/share_class FIGI) | PARTIAL (Ticker Events + `date` as-of) | PASS (`primary_exchange` MIC) | PARTIAL (`currency_name`/`currency_symbol`; history/PIT弱) | PASS (`active=false`, `delisted_utc`) | PASS (share_class_figi; GOOG/GOOGL分離可能) | FAIL (`date`≠knownAt; `last_updated_utc`≠historical knownAt) | FAIL/PARTIAL | $0 / $29+ | **FAIL** | **PARTIAL** | **PARTIAL** |
 | Alpha Vantage (reuse) | FAIL (ticker中心) | FAIL | FAIL/UNKNOWN | FAIL | UNKNOWN | FAIL | FAIL | FAIL | free/premium | **FAIL** | **FAIL** | **FAIL** |
-| Institutional (CRSP/BBG/FactSet/LSEG) | PASS (PERMNO/FIGI/FSYM等) | PASS (namedata/symbology history) | PASS (typical) | PASS/PARTIAL (product依) | PASS | PASS | PARTIAL→PASS (product依; announcement knownAtは別) | PASS (typical vendor revision) | QUOTE / HIGH | **PARTIAL/PASS tech** | **PASS tech** | **PASS tech** |
-| Combo: OpenFIGI + EODHD/Tiingo/Massive + self-archive | PARTIAL | PARTIAL | PARTIAL | PARTIAL | PARTIAL | PARTIAL | FAIL→PARTIAL only after self-archive starts | PARTIAL (self-archive) | low–mid | **FAIL** | **PARTIAL** | **PARTIAL** |
+| Institutional (CRSP/BBG/FactSet/LSEG) | PARTIAL/UNKNOWN（候補ID体系あり; specific product未確認） | PARTIAL/UNKNOWN（一般に履歴製品あり; 未突合） | PARTIAL/UNKNOWN | PARTIAL/UNKNOWN | PARTIAL/UNKNOWN | PARTIAL/UNKNOWN | UNKNOWN（specific entitlement未確認; announcement knownAtは別） | UNKNOWN/PARTIAL | QUOTE / HIGH | **UNKNOWN（技術候補; C未確定）** | **UNKNOWN/PARTIAL** | **UNKNOWN/PARTIAL** |
+| Combo: OpenFIGI + EODHD/Tiingo/Massive + self-archive | PARTIAL | PARTIAL | PARTIAL | PARTIAL | PARTIAL | PARTIAL | FAIL（possession≠provider knownAt; 遡及禁止） | PARTIAL（possession ledgerのみ） | low–mid | **FAIL** | **PARTIAL** | **PARTIAL** |
 
 ---
 
@@ -270,29 +270,36 @@
 
 ## 8. Institutional（LSEG / Bloomberg / FactSet / CRSP）
 
-### 8.1 技術
+**位置づけ:** **C の技術候補**（高額 vendor が Retrospective を満たし得るかを概観するのみ）。  
+**今回:** specific product / entitlement が Acceptance Criteria の全 MUST を満たすことは **未確認**。  
+したがって **「institutional なら成立する」とは断定しない**。**C 確定ではない**。
+
+### 8.1 技術（候補概観・PASS断定ではない）
+
+公開一次資料・製品一般知識に基づく **候補能力の概観**。特定契約 SKU との MUST 突合は未実施。
 
 | Vendor | stable ID | ticker/name history | delisted | share class | PIT/symbology | 技術メモ |
 | --- | --- | --- | --- | --- | --- | --- |
-| **CRSP** | PASS (`PERMNO` security-level; `PERMCO` company) | PASS (`STOCKNAMES` NAMEDT/NAMEENDDT) | PASS（研究用 inactive 含む） | PASS（PERMNOは share/security 単位） | PARTIAL→強い validity history。announcement knownAt とは別概念 | 研究用 Retrospective identity の定番 |
-| **Bloomberg** | PASS (FIGI / proprietary) | PASS（Data License symbology） | PASS（typical） | PASS | PASS/PARTIAL（製品依） | 高額 |
-| **FactSet** | PASS (`FSYM_ID` -S/-R/-L) | PASS（symbology） | PASS（typical） | PASS | PASS/PARTIAL | 高額 |
-| **LSEG** | PASS（RIC等 + 企業CA） | PASS（typical） | PASS | PASS | PASS/PARTIAL | 高額 |
+| **CRSP** | 候補 (`PERMNO` / `PERMCO`) | 候補 (`STOCKNAMES` NAMEDT/NAMEENDDT) | 候補（研究用 inactive） | 候補（PERMNO単位） | validity history は強い可能性。announcement knownAt は別監査 | 研究用 identity の定番候補 |
+| **Bloomberg** | 候補 (FIGI / proprietary) | 候補（Data License symbology） | 候補（typical） | 候補 | 製品依・未突合 | 高額 |
+| **FactSet** | 候補 (`FSYM_ID` -S/-R/-L) | 候補（symbology） | 候補（typical） | 候補 | 製品依・未突合 | 高額 |
+| **LSEG** | 候補（RIC等） | 候補（typical） | 候補 | 候補 | 製品依・未突合 | 高額 |
 
 ### 8.2 経済
 
 | 評価 | 値 |
 | --- | --- |
 | cost | **QUOTE / UNKNOWN**（公開定価なし。端末・Data License は通常高額） |
-| vs ¥10,000 運用 | **TECHNICALLY_VALID_BUT_ECONOMICALLY_UNSUITABLE**（技術 FAIL にはしない） |
+| vs ¥10,000 運用 | **ECONOMICALLY_UNSUITABLE**（見込み） |
+| 技術との分離 | 経済不適合を理由に技術を FAIL/D へ落とさない。一方、specific product 未確認のため **技術 PASS / C 確定にもしない** |
 
 ### 8.3 用途判定
 
 | 用途 | 判定 |
 | --- | --- |
-| Retrospective | **PARTIAL〜PASS（技術）** / **ECONOMICALLY_UNSUITABLE** |
-| Forward | **PASS（技術）** / 経済不適合 |
-| Live | **PASS（技術）** / 経済不適合＋再配布制約 |
+| Retrospective | **UNKNOWN（技術候補; specific product未確認）** / 経済は UNSUITABLE 見込み |
+| Forward | **UNKNOWN/PARTIAL（技術候補; 未確認）** / 経済不適合見込み |
+| Live | **UNKNOWN/PARTIAL（技術候補; 未確認）** / 経済不適合・再配布制約見込み |
 
 ---
 
@@ -302,7 +309,7 @@
 
 `OpenFIGI`（class/composite FIGI）  
 + `Massive` or `EODHD`（delisted / exchange / currency field）  
-+ **self-archive**（取得時刻を possession/knowledge 境界として固定）
++ **self-archive**（取得・検証済みの **possession evidence** を固定。`fetchedAt` / `ingestedAt` は provider historical `knownAt` ではない）
 
 ### 9.2 安全 join 要件（満たせない場合は禁止）
 
@@ -310,9 +317,17 @@
 - namespace
 - validity period
 - provenance
-- knownAt（self-archive 開始以降のみ自己生成可）
+- provider historical `knownAt`（無い場合は retrospective PASS 不可。self-archive で代替生成しない）
 - share class 一致
 - listing 一致
+
+**self-archive の意味（契約維持）:**
+
+- 得られるのは **possession evidence**（いつ自システムが取得・検証したか）
+- `fetchedAt` / `ingestedAt` ≠ provider historical `knownAt`
+- archive 開始後は、取得・検証済み時刻以降だけを **forward decision eligibility boundary** として保守的に使える
+- historical provider `knownAt` を自己生成したとは扱わない
+- retrospective 区間への遡及禁止
 
 **禁止:** ticker 文字列だけの join。
 
@@ -320,8 +335,8 @@
 
 | 用途 | 判定 |
 | --- | --- |
-| Retrospective | **FAIL**（archive 開始前の歴史は as-known 再構成不能） |
-| Forward | **PARTIAL / CONDITIONAL**（archive 運用が確立した場合のみ） |
+| Retrospective | **FAIL**（provider knownAt 欠如。possession を knownAt に昇格・遡及しない） |
+| Forward | **PARTIAL / CONDITIONAL**（verified possession 以降の eligibility boundary が確立した場合のみ） |
 | Live | **PARTIAL / CONDITIONAL** |
 
 ---
@@ -336,8 +351,8 @@
 | EODHD | FAIL（`effective` ≠ knownAt） |
 | Tiingo | FAIL |
 | Massive | FAIL（`date` as-of ≠ knownAt；`last_updated_utc` ≠ historical knownAt） |
-| Institutional | PARTIAL/PASS（製品依）。それでも announcement-time knownAt は別監査が必要な場合あり |
-| Combo + self-archive | 開始日以降のみ PARTIAL |
+| Institutional | UNKNOWN（specific product/entitlement 未確認）。announcement-time knownAt は別監査が必要な場合あり |
+| Combo + self-archive | FAIL as provider knownAt。forward では verified possession 以降のみ eligibility PARTIAL |
 
 ### 10.2 ticker history / recycle
 
@@ -374,7 +389,8 @@
 | Tiingo paid | paid | ECONOMICALLY_UNSUITABLE（概算） |
 | Institutional | QUOTE/HIGH | ECONOMICALLY_UNSUITABLE |
 
-技術と経済は分離。高額でも技術 FAIL にしない。
+技術と経済は分離。経済不適合を理由に技術を FAIL/D へ落とさない。  
+ただし institutional は specific product 未確認のため、経済以前に **技術 PASS / C も未確定**。
 
 ---
 
@@ -384,15 +400,15 @@ Retrospective Backtest Master の MUST に対する現状:
 
 | MUST | OpenFIGI | EODHD | Tiingo | Massive | Institutional | Combo+archive |
 | --- | --- | --- | --- | --- | --- | --- |
-| permanent id + namespace | satisfied | partial | partial | satisfied | satisfied | satisfied |
-| ticker validity history | unsatisfied | partial | unsatisfied | partial | satisfied | partial |
-| trading currency + PIT | unsatisfied | unsatisfied | unsatisfied | partial/unsatisfied | partial/satisfied | partial* |
-| delisted retention | partial | satisfied | partial | satisfied | satisfied | satisfied |
-| share class safety | satisfied | unknown | unknown | satisfied | satisfied | satisfied |
-| historical knownAt | **unsatisfied** | **unsatisfied** | **unsatisfied** | **unsatisfied** | partial/satisfied | partial* |
-| revision evidence | unsatisfied | unsatisfied | unsatisfied | partial | satisfied | partial* |
+| permanent id + namespace | satisfied | partial | partial | satisfied | unknown（候補あり; 未突合） | satisfied |
+| ticker validity history | unsatisfied | partial | unsatisfied | partial | unknown（候補あり; 未突合） | partial |
+| trading currency + PIT | unsatisfied | unsatisfied | unsatisfied | partial/unsatisfied | unknown | unsatisfied* |
+| delisted retention | partial | satisfied | partial | satisfied | unknown（候補あり; 未突合） | partial |
+| share class safety | satisfied | unknown | unknown | satisfied | unknown（候補あり; 未突合） | satisfied |
+| historical knownAt | **unsatisfied** | **unsatisfied** | **unsatisfied** | **unsatisfied** | **unknown**（未突合） | **unsatisfied*** |
+| revision evidence | unsatisfied | unsatisfied | unsatisfied | partial | unknown（候補あり; 未突合） | unsatisfied* |
 
-\* self-archive 開始以降のみ。過去区間は unsatisfied。
+\* Combo+archive の self-archive は possession / `fetchedAt`・`ingestedAt` であり、provider historical `knownAt` を満たさない。forward eligibility boundary のみ条件付き。retrospective 遡及は unsatisfied。
 
 ---
 
@@ -402,7 +418,15 @@ Retrospective Backtest Master の MUST に対する現状:
 
 **D. 現時点で Retrospective Security Master 不成立**
 
-（無料組合せでも低コスト retail でも、historical knownAt / 完全 as-known master の MUST を一次資料で満たせない。institutional は技術的に近いが経済不適合で、本プロジェクトの「成立」には未到達。）
+最終 **D** の理由:
+
+1. 無料 / 低コスト retail（単独・組合せ）では historical `knownAt` 等の MUST を一次資料で満たせない  
+2. institutional は **C の技術候補**にとどまり、今回 specific product / entitlement の PASS は **未確認** → **C 確定ではない**  
+3. 加えて ¥10,000 運用前提では institutional は経済的に採用不能見込み  
+4. したがって **技術的成立性未確定 + 採用不能** のため最終 **D**  
+5. **経済不適合を理由に技術を D へ落としたわけではない**（技術 PASS も未確認）
+
+「institutional なら成立する」とは **断定しない**。
 
 補足ラベル:
 
@@ -410,14 +434,14 @@ Retrospective Backtest Master の MUST に対する現状:
 | --- | --- |
 | 無料単独/組合せで Retrospective | 不可（≠A） |
 | 低コスト retail で Retrospective | 不可（≠B） |
-| 高額 institutional なら技術成立し得る | **C 技術経路**（経済は UNSUITABLE） |
+| 高額 institutional | **C の技術候補**（specific product 未確認 → **C 未確定**。経済は UNSUITABLE 見込み） |
 | 現状の採用可能宣言 | **D** |
 
 ### 12.2 Forward / Live
 
 | Master | 判定 |
 | --- | --- |
-| Forward Research Master | **CONDITIONAL**（FIGI系 + explicit currency evidence + delisted監視 + self-archive。実装・契約なし） |
+| Forward Research Master | **CONDITIONAL**（FIGI系 + explicit currency evidence + delisted監視 + self-archive の **possession / eligibility boundary**。provider knownAt 自己生成ではない。実装・契約なし） |
 | Live Trading Master | **CONDITIONAL**（同上 + broker-side mapping は別。楽天依存は Criteria 外） |
 
 ### 12.3 Real Backtest Gate
@@ -467,8 +491,8 @@ GOOG/GOOGL については、OpenFIGI/Massive の **share class / listing FIGI �
 ## 15. Next step（実装しない）
 
 1. 本 PoC を PR で固定する。  
-2. Forward CONDITIONAL を進めるなら、**self-archive 運用設計ノートのみ**（client 実装禁止のまま）。  
-3. Retrospective を求めるなら institutional 見積（QUOTE）と経済レビューを分離実施。  
+2. Forward CONDITIONAL を進めるなら、**self-archive（possession / eligibility boundary）運用設計ノートのみ**（client 実装禁止のまま。`fetchedAt`≠historical `knownAt` 維持）。  
+3. Retrospective を求めるなら institutional の **specific product / entitlement MUST 突合** と見積（QUOTE）・経済レビューを分離実施（C は突合後まで未確定）。  
 4. Real Backtest は Master 以外の knownAt/CA/Universe/Dividend も揃うまで NO-GO。  
 
 ---
