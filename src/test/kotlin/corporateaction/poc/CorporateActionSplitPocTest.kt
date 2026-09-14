@@ -24,6 +24,7 @@ class CorporateActionSplitPocTest {
         eventId: String? = "evt-1",
         knownAtStatus: HistoricalKnownAtStatus = HistoricalKnownAtStatus.UNRESOLVED,
         announcedAt: Instant? = null,
+        knownAt: Instant? = null,
         announcedDate: LocalDate? = LocalDate.of(2020, 7, 30),
         providerSymbol: String = "AAPL",
     ): RawSplitObservation =
@@ -39,6 +40,7 @@ class CorporateActionSplitPocTest {
             exDate = effectiveDate,
             recordDate = null,
             fetchedAt = fetchedAt,
+            knownAt = knownAt,
             sourceDocumentId = "fixture-split",
             rawPayloadSha256 = null,
             historicalKnownAtStatus = knownAtStatus,
@@ -195,17 +197,124 @@ class CorporateActionSplitPocTest {
             )
         assertEquals(fetchedAt, obs.fetchedAt)
         assertEquals(HistoricalKnownAtStatus.UNRESOLVED, obs.historicalKnownAtStatus)
-        assertTrue(obs.announcedAt == null)
+        assertEquals(null, obs.knownAt)
     }
 
     @Test
-    fun unresolvedKnownAtMustNotInventAnnouncementInstant() {
+    fun unresolvedWithNullKnownAtIsValid() {
+        val obs =
+            observation(
+                actionType = SplitActionType.STOCK_SPLIT,
+                ratio = SplitRatio.of("1", "2"),
+                knownAtStatus = HistoricalKnownAtStatus.UNRESOLVED,
+                knownAt = null,
+            )
+        assertEquals(HistoricalKnownAtStatus.UNRESOLVED, obs.historicalKnownAtStatus)
+        assertEquals(null, obs.knownAt)
+    }
+
+    @Test
+    fun unresolvedWithKnownAtIsRejected() {
         assertFailsWith<IllegalArgumentException> {
             observation(
                 actionType = SplitActionType.STOCK_SPLIT,
                 ratio = SplitRatio.of("1", "2"),
                 knownAtStatus = HistoricalKnownAtStatus.UNRESOLVED,
-                announcedAt = Instant.parse("2020-07-30T00:00:00Z"),
+                knownAt = Instant.parse("2020-07-30T15:00:00Z"),
+            )
+        }
+    }
+
+    @Test
+    fun resolvedWithKnownAtIsValid() {
+        val known = Instant.parse("2020-07-30T15:00:00Z")
+        val obs =
+            observation(
+                actionType = SplitActionType.STOCK_SPLIT,
+                ratio = SplitRatio.of("1", "2"),
+                knownAtStatus = HistoricalKnownAtStatus.RESOLVED_WITH_EVIDENCE,
+                knownAt = known,
+            )
+        assertEquals(HistoricalKnownAtStatus.RESOLVED_WITH_EVIDENCE, obs.historicalKnownAtStatus)
+        assertEquals(known, obs.knownAt)
+    }
+
+    @Test
+    fun resolvedWithoutKnownAtIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            observation(
+                actionType = SplitActionType.STOCK_SPLIT,
+                ratio = SplitRatio.of("1", "2"),
+                knownAtStatus = HistoricalKnownAtStatus.RESOLVED_WITH_EVIDENCE,
+                knownAt = null,
+            )
+        }
+    }
+
+    @Test
+    fun announcedAtAloneDoesNotResolveKnownAt() {
+        val announced = Instant.parse("2020-07-30T14:00:00Z")
+        val obs =
+            observation(
+                actionType = SplitActionType.STOCK_SPLIT,
+                ratio = SplitRatio.of("1", "2"),
+                knownAtStatus = HistoricalKnownAtStatus.UNRESOLVED,
+                announcedAt = announced,
+                knownAt = null,
+            )
+        assertEquals(announced, obs.announcedAt)
+        assertEquals(null, obs.knownAt)
+        assertEquals(HistoricalKnownAtStatus.UNRESOLVED, obs.historicalKnownAtStatus)
+    }
+
+    @Test
+    fun announcedAtAndKnownAtMayDiffer() {
+        val announced = Instant.parse("2020-07-30T14:00:00Z")
+        val known = Instant.parse("2020-07-30T16:30:00Z")
+        val obs =
+            observation(
+                actionType = SplitActionType.STOCK_SPLIT,
+                ratio = SplitRatio.of("1", "2"),
+                knownAtStatus = HistoricalKnownAtStatus.RESOLVED_WITH_EVIDENCE,
+                announcedAt = announced,
+                knownAt = known,
+            )
+        assertEquals(announced, obs.announcedAt)
+        assertEquals(known, obs.knownAt)
+        assertTrue(obs.announcedAt != obs.knownAt)
+    }
+
+    @Test
+    fun fetchedAtAndKnownAtMayDiffer() {
+        val known = Instant.parse("2020-07-30T16:30:00Z")
+        val obs =
+            observation(
+                actionType = SplitActionType.STOCK_SPLIT,
+                ratio = SplitRatio.of("1", "2"),
+                knownAtStatus = HistoricalKnownAtStatus.RESOLVED_WITH_EVIDENCE,
+                knownAt = known,
+            )
+        assertEquals(fetchedAt, obs.fetchedAt)
+        assertEquals(known, obs.knownAt)
+        assertTrue(obs.fetchedAt != obs.knownAt)
+    }
+
+    @Test
+    fun identityOneForOneStockSplitIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            observation(
+                actionType = SplitActionType.STOCK_SPLIT,
+                ratio = SplitRatio.of("1", "1"),
+            )
+        }
+    }
+
+    @Test
+    fun identityOneForOneReverseSplitIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            observation(
+                actionType = SplitActionType.REVERSE_SPLIT,
+                ratio = SplitRatio.of("1", "1"),
             )
         }
     }

@@ -358,8 +358,8 @@ PoC パッケージ: `corporateaction.poc`（`SplitRatio`, `RawSplitObservation`
 
 追記のみ（既存 §5 を緩和しない）:
 
-1. ratio は `oldShares` / `newShares`（`BigDecimal`）で向きを明示する。曖昧文字列の推測解釈禁止。
-2. `announcedDate` / `announcedAt` / `effectiveDate` / `exDate` / `recordDate` / `fetchedAt` を分離する。effective / ex / LocalDate 00:00 / fetchedAt を historical `knownAt` にしてはならない。根拠 Instant が無ければ `historicalKnownAtStatus = UNRESOLVED`。
+1. ratio は `oldShares` / `newShares`（`BigDecimal`）で向きを明示する。曖昧文字列の推測解釈禁止。**identity ratio（`newShares == oldShares`、例: 1-for-1）は split / reverse split として受理しない。** `STOCK_SPLIT` は `newShares > oldShares`、`REVERSE_SPLIT` は `newShares < oldShares`。
+2. `announcedDate` / `announcedAt` / `effectiveDate` / `exDate` / `recordDate` / `fetchedAt` / `knownAt` を分離する。**`announcedAt` と `knownAt` は別フィールド**であり、announcement timestamp は自動で historical `knownAt` ではない。effective / ex / LocalDate 00:00 / fetchedAt / announcedAt を `knownAt` へ転用・自動コピーしてはならない。`historicalKnownAtStatus = UNRESOLVED` ↔ `knownAt == null`；`RESOLVED_WITH_EVIDENCE` ↔ `knownAt != null`。一次証拠で `announcedAt == knownAt` と確認できた場合のみ、両フィールドへ同じ Instant を明示的に入れてよい。
 3. 知識PIT（split 予定を当時知っていたか）と、effective 後の保有数量会計適用は別責務である。
 4. Provider symbol から `SecurityId` を生成しない。通常の split / reverse は `SecurityId` 継続のまま。
 5. raw OHLC の段差を split 無しで自動補正しない。価格だけ adjust して数量未変更は禁止（§5 本体どおり）。

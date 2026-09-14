@@ -110,7 +110,9 @@ Forbidden:
 - Double
 - zero / negative shares
 
-`STOCK_SPLIT` requires `newShares >= oldShares`; `REVERSE_SPLIT` requires `newShares < oldShares`.
+`STOCK_SPLIT` requires `newShares > oldShares`.  
+`REVERSE_SPLIT` requires `newShares < oldShares`.  
+**Identity ratio (`newShares == oldShares`, e.g. 1-for-1) is rejected** as neither split nor reverse split.
 
 ---
 
@@ -120,14 +122,20 @@ Separated fields on `RawSplitObservation`:
 
 | Field | Meaning |
 | --- | --- |
-| `announcedDate` / `announcedAt` | announcement calendar date / Instant if evidenced |
+| `announcedDate` / `announcedAt` | announcement calendar date / issuer-or-provider announcement Instant if evidenced |
 | `effectiveDate` | corporate-action effective date |
 | `exDate` | ex date when provided |
 | `recordDate` | record date when provided |
 | `fetchedAt` | our retrieval Instant |
+| `knownAt` | Instant when the split fact was evidenced as decision-usable (nullable; independent of `announcedAt`) |
+| `historicalKnownAtStatus` | `UNRESOLVED` ↔ `knownAt == null`; `RESOLVED_WITH_EVIDENCE` ↔ `knownAt != null` |
 
-Forbidden promotions:
+**`announcedAt` and `knownAt` are separate fields.**  
+An announcement timestamp is **not** automatically historical knownAt.
 
+Forbidden promotions / copies:
+
+- `announcedAt` → auto-copy into `knownAt` (unless primary evidence proves they are the same Instant, set both explicitly)
 - `effectiveDate` → knownAt
 - `exDate` → knownAt
 - announcement `LocalDate` at 00:00 → knownAt
@@ -140,8 +148,9 @@ Forbidden promotions:
 ### A. Event knowledge
 
 “Did the decision process know the split **before** trading on it?”  
-Requires Instant evidence → `HistoricalKnownAtStatus.RESOLVED_WITH_EVIDENCE`.  
-Otherwise **UNRESOLVED** (default for free feeds examined).
+Requires Instant evidence in **`knownAt`** → `HistoricalKnownAtStatus.RESOLVED_WITH_EVIDENCE`.  
+`announcedAt` alone does **not** resolve knownAt.  
+Otherwise **UNRESOLVED** with `knownAt == null` (default for free feeds examined).
 
 ### B. Accounting application
 
