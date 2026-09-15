@@ -16,12 +16,15 @@ import java.time.Instant
  * (independent of HTTP status). Never a historical knownAt.
  */
 data class AlphaVantageHttpPossession(
+    /** Secret-free request identity bound at attempt time (same settings as the HTTP call). */
+    val requestKey: String,
     val attemptedAt: Instant,
     val attemptFinishedAt: Instant,
     val fetchedAt: Instant?,
     val httpStatus: Int?,
     val contentType: String?,
     val bodyBytes: ByteArray?,
+    /** Exception class simple name only — never URI / exception message / API key. */
     val transportFailureMessage: String?,
 ) {
     val bodyFullyReceived: Boolean get() = bodyBytes != null && fetchedAt != null
@@ -55,6 +58,7 @@ class AlphaVantageDailyArchiveClient(
 
     fun executeDaily(symbol: String): AlphaVantageHttpPossession {
         require(symbol.isNotBlank()) { "symbol must not be blank" }
+        val requestKey = requestKeyFor(symbol)
         val attemptedAt = clock()
         val key = apiKey ?: DEMO_API_KEY
         val encodedSymbol = URLEncoder.encode(symbol.trim(), StandardCharsets.UTF_8)
@@ -79,6 +83,7 @@ class AlphaVantageDailyArchiveClient(
             val attemptFinishedAt = clock()
             val body = response.body() ?: ByteArray(0)
             AlphaVantageHttpPossession(
+                requestKey = requestKey,
                 attemptedAt = attemptedAt,
                 attemptFinishedAt = attemptFinishedAt,
                 fetchedAt = attemptFinishedAt,
@@ -90,14 +95,15 @@ class AlphaVantageDailyArchiveClient(
         } catch (e: Exception) {
             val attemptFinishedAt = clock()
             AlphaVantageHttpPossession(
+                requestKey = requestKey,
                 attemptedAt = attemptedAt,
                 attemptFinishedAt = attemptFinishedAt,
                 fetchedAt = null,
                 httpStatus = null,
                 contentType = null,
                 bodyBytes = null,
-                transportFailureMessage =
-                    e::class.java.simpleName + ": " + (e.message ?: "transport failure"),
+                // Class name only — never e.message (may contain request URI / apikey).
+                transportFailureMessage = e::class.java.simpleName,
             )
         }
     }

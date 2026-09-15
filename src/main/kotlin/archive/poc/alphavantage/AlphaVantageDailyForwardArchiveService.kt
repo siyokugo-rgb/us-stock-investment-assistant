@@ -56,18 +56,25 @@ class AlphaVantageDailyForwardArchiveService(
     fun archivePossessedResponse(
         symbol: String,
         possession: AlphaVantageHttpPossession,
-    ): AlphaVantageDailyArchiveResult =
-        finalize(
-            symbol = symbol.trim(),
+    ): AlphaVantageDailyArchiveResult {
+        val trimmed = symbol.trim()
+        val expectedKey = client.requestKeyFor(trimmed)
+        require(possession.requestKey == expectedKey) {
+            "possession.requestKey mismatch: possession=${possession.requestKey} expected=$expectedKey " +
+                "(refusing to archive with incorrect request provenance)"
+        }
+        return finalize(
+            symbol = trimmed,
             possession = possession,
         )
+    }
 
     private fun finalize(
         symbol: String,
         possession: AlphaVantageHttpPossession,
     ): AlphaVantageDailyArchiveResult {
-        // Provenance must match the client settings that generate HTTP requests.
-        val requestKey = client.requestKeyFor(symbol)
+        // Provenance is bound on the possession at attempt time (executeDaily).
+        val requestKey = possession.requestKey
         val archiveId = idGenerator()
         val priors =
             manifestStore.findByRequestKey(

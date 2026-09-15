@@ -89,11 +89,13 @@ class AlphaVantageDailyForwardArchivePocTest {
         status: Int,
         body: ByteArray?,
         transportMessage: String? = null,
+        requestKey: String = AlphaVantageDailyArchiveClient.requestKey(symbol),
     ): AlphaVantageHttpPossession {
         val a = nextInstant()
         val b = nextInstant()
         return if (body == null) {
             AlphaVantageHttpPossession(
+                requestKey = requestKey,
                 attemptedAt = a,
                 attemptFinishedAt = b,
                 fetchedAt = null,
@@ -104,6 +106,7 @@ class AlphaVantageDailyForwardArchivePocTest {
             )
         } else {
             AlphaVantageHttpPossession(
+                requestKey = requestKey,
                 attemptedAt = a,
                 attemptFinishedAt = b,
                 fetchedAt = b,
@@ -322,7 +325,7 @@ class AlphaVantageDailyForwardArchivePocTest {
 
     @Test
     fun symbolMismatchIsRejected() {
-        val result = service().archivePossessedResponse("AAPL", possession(200, validBody.copyOf()))
+        val result = service().archivePossessedResponse("AAPL", possession(200, validBody.copyOf(), requestKey = AlphaVantageDailyArchiveClient.requestKey("AAPL")))
         assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
         assertNull(result.record.eligibilityBoundaryAt)
     }
@@ -479,8 +482,13 @@ class AlphaVantageDailyForwardArchivePocTest {
                 clock = { nextInstant() },
                 idGenerator = { "id-${ids.incrementAndGet()}" },
             )
-        val result = svc.archivePossessedResponse(symbol, possession(200, validBody.copyOf()))
-        assertEquals(fullClient.requestKeyFor(symbol), result.record.requestKey)
+        val fullKey = fullClient.requestKeyFor(symbol)
+        val result =
+            svc.archivePossessedResponse(
+                symbol,
+                possession(200, validBody.copyOf(), requestKey = fullKey),
+            )
+        assertEquals(fullKey, result.record.requestKey)
         assertTrue(result.record.requestKey.contains("outputsize=full"))
         assertFalse(result.record.requestKey.contains("outputsize=compact"))
         assertFalse(result.record.requestKey.contains("apikey", ignoreCase = true))
@@ -518,9 +526,17 @@ class AlphaVantageDailyForwardArchivePocTest {
                 clock = { nextInstant() },
                 idGenerator = { "id-${ids.incrementAndGet()}" },
             )
-        val first = svc.archivePossessedResponse(symbol, possession(200, validBody.copyOf()))
-        val second = svc.archivePossessedResponse(symbol, possession(200, validBody.copyOf()))
         val expectedKey = fullClient.requestKeyFor(symbol)
+        val first =
+            svc.archivePossessedResponse(
+                symbol,
+                possession(200, validBody.copyOf(), requestKey = expectedKey),
+            )
+        val second =
+            svc.archivePossessedResponse(
+                symbol,
+                possession(200, validBody.copyOf(), requestKey = expectedKey),
+            )
         assertEquals(expectedKey, first.record.requestKey)
         assertEquals(expectedKey, second.record.requestKey)
         assertEquals(first.record.archiveId, second.record.duplicateOf)
@@ -570,5 +586,167 @@ class AlphaVantageDailyForwardArchivePocTest {
         assertFalse(line.contains("\"currency\""))
         assertNull(result.record.externalIdentifier)
         assertNull(result.record.externalIdentifierNamespace)
+    }
+
+    @Test
+    fun compactClientPossessionCarriesCompactRequestKey() {
+        val client =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                outputSize = "compact",
+                apiKey = "secret-must-not-leak",
+                clock = { nextInstant() },
+            )
+        val possession = client.executeDaily(symbol)
+        assertTrue(possession.requestKey.contains("outputsize=compact"))
+        assertEquals(client.requestKeyFor(symbol), possession.requestKey)
+        assertFalse(possession.requestKey.contains("apikey", ignoreCase = true))
+        assertFalse(possession.requestKey.contains("secret", ignoreCase = true))
+        assertEquals("ConnectException", possession.transportFailureMessage)
+        assertNull(possession.fetchedAt)
+        assertNull(possession.bodyBytes)
+        // Secret must not appear in transportFailureMessage either.
+        assertFalse(possession.transportFailureMessage!!.contains("secret", ignoreCase = true))
+        assertFalse(possession.transportFailureMessage!!.contains("apikey", ignoreCase = true))
+        assertFalse(possession.transportFailureMessage!!.contains("http://", ignoreCase = true))
+    }
+
+    @Test
+    fun fullClientPossessionCarriesFullRequestKey() {
+        val client =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                outputSize = "full",
+                apiKey = "secret-must-not-leak",
+                clock = { nextInstant() },
+            )
+        val possession = client.executeDaily(symbol)
+        assertTrue(possession.requestKey.contains("outputsize=full"))
+        assertEquals(client.requestKeyFor(symbol), possession.requestKey)
+        assertFalse(possession.requestKey.contains("secret", ignoreCase = true))
+    }
+
+    @Test
+    fun fullPossessionAgainstCompactServiceIsFailClosed() {
+        val compactSvc = service() // default compact client
+        val fullKey = AlphaVantageDailyArchiveClient.requestKey(symbol, "full")
+        val mismatched = possession(200, validBody.copyOf(), requestKey = fullKey)
+        val ex =
+            kotlin.test.assertFailsWith<IllegalArgumentException> {
+                compactSvc.archivePossessedResponse(symbol, mismatched)
+            }
+        assertTrue(ex.message!!.contains("requestKey mismatch"))
+        assertTrue(compactSvc.readManifest().isEmpty())
+        assertEquals(0, compactSvc.currentCoverage().observedCount)
+    }
+
+    @Test
+    fun compactPossessionAgainstFullServiceIsFailClosed() {
+        val fullClient =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                outputSize = "full",
+                clock = { nextInstant() },
+            )
+        val fullSvc =
+            AlphaVantageDailyForwardArchiveService(
+                archiveRoot = root,
+                client = fullClient,
+                clock = { nextInstant() },
+                idGenerator = { "id-${ids.incrementAndGet()}" },
+            )
+        val compactKey = AlphaVantageDailyArchiveClient.requestKey(symbol, "compact")
+        val mismatched = possession(200, validBody.copyOf(), requestKey = compactKey)
+        val ex =
+            kotlin.test.assertFailsWith<IllegalArgumentException> {
+                fullSvc.archivePossessedResponse(symbol, mismatched)
+            }
+        assertTrue(ex.message!!.contains("requestKey mismatch"))
+        assertTrue(fullSvc.readManifest().isEmpty())
+        assertEquals(0, fullSvc.currentCoverage().observedCount)
+    }
+
+    @Test
+    fun transportFailurePossessionRetainsIntendedRequestKeyWithoutSecrets() {
+        val secret = "AV_SECRET_KEY_SHOULD_NEVER_LEAK_XYZ"
+        val client =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                outputSize = "full",
+                apiKey = secret,
+                clock = { nextInstant() },
+            )
+        val possession = client.executeDaily(symbol)
+        assertEquals(client.requestKeyFor(symbol), possession.requestKey)
+        assertTrue(possession.requestKey.contains("outputsize=full"))
+        assertNull(possession.fetchedAt)
+        assertNull(possession.bodyBytes)
+        assertNotNull(possession.transportFailureMessage)
+        // Class name only — no URI / message / apikey.
+        assertFalse(possession.transportFailureMessage!!.contains(":"))
+        assertFalse(possession.transportFailureMessage!!.contains(secret))
+        assertFalse(possession.requestKey.contains(secret))
+
+        val svc =
+            AlphaVantageDailyForwardArchiveService(
+                archiveRoot = root,
+                client = client,
+                clock = { nextInstant() },
+                idGenerator = { "id-${ids.incrementAndGet()}" },
+            )
+        val result = svc.archivePossessedResponse(symbol, possession)
+        assertEquals(ObservationStatus.PROVIDER_FAILURE, result.record.observationStatus)
+        assertEquals(possession.requestKey, result.record.requestKey)
+        assertEquals(possession.transportFailureMessage, result.record.notes)
+        val line = result.record.toJsonLine()
+        assertFalse(line.contains(secret))
+        assertFalse(line.contains("apikey", ignoreCase = true))
+        assertFalse(result.record.requestKey.contains("apikey", ignoreCase = true))
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertEquals(0, result.coverage.observedCount)
+    }
+
+    @Test
+    fun duplicateRevisionGroupingFollowsPossessionRequestKey() {
+        val fullClient =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                outputSize = "full",
+                clock = { nextInstant() },
+            )
+        val svc =
+            AlphaVantageDailyForwardArchiveService(
+                archiveRoot = root,
+                client = fullClient,
+                clock = { nextInstant() },
+                idGenerator = { "id-${ids.incrementAndGet()}" },
+            )
+        val key = fullClient.requestKeyFor(symbol)
+        val first =
+            svc.archivePossessedResponse(
+                symbol,
+                possession(200, validBody.copyOf(), requestKey = key),
+            )
+        val alt = validBody.copyOf().also { it[it.lastIndex] = if (it.last() == '0'.code.toByte()) '1'.code.toByte() else '0'.code.toByte() }
+        // Ensure alt is still valid JSON? Safer: append whitespace to change hash without breaking validation.
+        // Whitespace difference after JSON may fail validation; use a second OBSERVED via copy with trailing newline if validator allows.
+        // Instead verify duplicate grouping on identical bodies under possession key.
+        val second =
+            svc.archivePossessedResponse(
+                symbol,
+                possession(200, validBody.copyOf(), requestKey = key),
+            )
+        assertEquals(key, first.record.requestKey)
+        assertEquals(key, second.record.requestKey)
+        assertEquals(first.record.archiveId, second.record.duplicateOf)
+
+        // Cross-outputSize possession must not archive under the other key.
+        val compactKey = AlphaVantageDailyArchiveClient.requestKey(symbol, "compact")
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            svc.archivePossessedResponse(
+                symbol,
+                possession(200, validBody.copyOf(), requestKey = compactKey),
+            )
+        }
     }
 }

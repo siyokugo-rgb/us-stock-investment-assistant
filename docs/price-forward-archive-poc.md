@@ -64,19 +64,27 @@ Reuses PR #19 common primitives: `ManifestRecord`, `ManifestStore`, `ImmutableRa
 
 ## requestKey
 
-Secret-free, derived from the **same** `AlphaVantageDailyArchiveClient` settings that issue HTTP
-(`client.requestKeyFor(symbol)`). Service does **not** hold an independent `outputSize`.
+Secret-free request identity is bound on `AlphaVantageHttpPossession.requestKey` at attempt time.
+
+`executeDaily(symbol)` computes `requestKey = requestKeyFor(symbol)` **before** HTTP send and
+attaches that same key to success, HTTP-failure, and transport-failure possessions.
+
+Manifest `requestKey` is taken from `possession.requestKey` (not recomputed independently).
+
+`archivePossessedResponse(symbol, possession)` Fail-Closes unless
+`possession.requestKey == client.requestKeyFor(symbol)` — mismatched provenance is never archived
+(never OBSERVED).
 
 ```text
 GET|/query|function=TIME_SERIES_DAILY|symbol={SYMBOL}|outputsize={compact|full}
 ```
 
 Default client outputSize is `compact`. Changing client to `full` changes requestKey accordingly.
-`archivePossessedResponse` uses the same `client.requestKeyFor(symbol)` — no alternate provenance API.
 
-- API key never enters requestKey / logs / fixtures / raw paths / manifest
+- API key never enters requestKey / notes / transportFailureMessage / fixtures / raw paths / manifest
+- `transportFailureMessage` is exception **class simple name only** (never URI / `e.message`)
 - provider symbol is request identity only — **not** `externalIdentifier` / SecurityId
-- compact and full are distinct requestKeys (duplicate/revision grouping follows actual request settings)
+- compact and full are distinct requestKeys (duplicate/revision grouping follows possession provenance)
 
 ---
 
