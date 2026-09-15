@@ -108,17 +108,35 @@ Data Contract の「`ingestedAt` は知識PIT条件に含めない」と整合�
 | `asOfParam` | no | API の as-of / date パラメータ（**≠ knownAt**） |
 | `observedFields` | yes | 観測できた論理フィールド集合（下記 §7） |
 | `validityPeriod` | no | `validFrom`/`validTo` または listing/delisting 等。無い・曖昧なら null + `UNKNOWN` |
-| `fetchedAt` | yes | UTC Instant。取得成功時刻 |
-| `ingestedAt` | yes | UTC Instant。検証・hash・immutable 保存完了時刻。`ingestedAt >= fetchedAt` |
-| `rawPayloadHash` | yes | raw bytes の暗号学的ハッシュ（推奨: SHA-256 hex） |
-| `rawPayloadUri` | yes | immutable raw への参照（ローカル path / object key）。内容は書き換えない |
-| `contentType` | yes | 例: `application/json` |
+| `fetchedAt` | status 依存（§4.1） | UTC Instant。取得試行の possession 開始証拠 |
+| `ingestedAt` | status 依存（§4.1） | UTC Instant。検証・hash・immutable 保存（または欠損/失敗確定）完了時刻 |
+| `rawPayloadHash` | status 依存（§4.1） | raw bytes の暗号学的ハッシュ（推奨: SHA-256 hex） |
+| `rawPayloadUri` | status 依存（§4.1） | immutable raw への参照（ローカル path / object key）。内容は書き換えない |
+| `contentType` | status 依存 | 例: `application/json`。raw 無しなら null |
 | `httpStatus` / `transportStatus` | yes | 成功時も記録。失敗は §11 |
-| `revisionOf` | no | 先行 `archiveId`（同一論理キーの後続版） |
-| `duplicateOf` | no | 同一 hash の既存 `archiveId` |
+| `revisionOf` | no（該当時のみ） | 先行 `archiveId`（同一論理キー・異なる hash の後続版） |
+| `duplicateOf` | no（該当時のみ） | 同一 hash の既存 `archiveId` |
 | `observationStatus` | yes | `OBSERVED` / `MISSING` / `PROVIDER_FAILURE` / `REJECTED_VALIDATION` |
-| `eligibilityBoundaryAt` | yes | forward 用下限 Instant（§14） |
+| `eligibilityBoundaryAt` | status 依存（§4.1） | forward 用下限 Instant（§14）。MISSING/FAILURE は null |
 | `notes` | no | 人手注記。自動で knownAt を書かない |
+
+### 4.1 status 別 nullable（確定）
+
+| フィールド | `OBSERVED` | `REJECTED_VALIDATION` | `MISSING` | `PROVIDER_FAILURE` |
+| --- | --- | --- | --- | --- |
+| `fetchedAt` | **required**（取得成功） | **required**（応答受信） | **required**（最終試行時刻） | **required**（最終試行時刻） |
+| `ingestedAt` | **required**（検証・hash・保存完了） | **required**（検証終了） | **required**（欠損確定） | **required**（失敗確定） |
+| `rawPayloadHash` | **required** | **required**（保存した raw の hash） | **null** | **null**（応答 body を保存した場合のみ required） |
+| `rawPayloadUri` | **required** | **required** | **null** | **null**（body 保存時のみ required） |
+| `eligibilityBoundaryAt` | **required** | **null**（決定根拠に使わない） | **null** | **null** |
+| `revisionOf` | optional | optional | **null** | **null** |
+| `duplicateOf` | optional | optional | **null** | **null** |
+
+共通制約（値が非 null のとき）:
+
+- `ingestedAt >= fetchedAt`
+- `fetchedAt` / `ingestedAt` は historical `knownAt` ではない
+- `rawPayloadHash` があるなら対応 raw は write-once
 
 **禁止フィールド運用:**
 
@@ -131,17 +149,19 @@ Data Contract の「`ingestedAt` は知識PIT条件に含めない」と整合�
 
 ### 5.1 `fetchedAt`
 
-- 取得トランスポートが成功応答を返した直後の時計  
-- リトライ最終成功の時刻を採用（失敗試行は failure ログへ）  
+- 取得トランスポートが成功応答を返した直後の時計（`OBSERVED` / `REJECTED_VALIDATION`）  
+- `MISSING` / `PROVIDER_FAILURE` では **最終試行時刻**（possession 試行の証拠。成功 possession ではない）  
+- リトライ最終成功（または最終失敗）の時刻を採用  
 - timezone: **常に UTC Instant** で保存。表示変換は後段  
 
 ### 5.2 `ingestedAt`
 
-- 次がすべて完了した時刻:  
+- `OBSERVED`: 次がすべて完了した時刻  
   1. raw を immutable 領域へ書き込み  
   2. `rawPayloadHash` 再計算一致  
   3. 最小スキーマ検証（JSON parse 可、必須 envelope 等）  
-- parse 失敗でも raw は残し、`observationStatus=REJECTED_VALIDATION`、`ingestedAt` は検証終了時刻  
+- `REJECTED_VALIDATION`: parse/検証失敗でも raw は残し、検証終了時刻を `ingestedAt` とする  
+- `MISSING` / `PROVIDER_FAILURE`: 欠損または失敗レコードを manifest に確定した時刻  
 
 ### 5.3 clock / timezone
 
@@ -257,10 +277,11 @@ vendor を増やしすぎない。既存 PoC / feasibility で触れた候補に
 | フィールド | 値 |
 | --- | --- |
 | `observationStatus` | `MISSING` |
-| `fetchedAt` | 試行終了時刻（または最後の試行） |
-| `ingestedAt` | 欠損レコード確定時刻 |
-| `rawPayloadHash` | 空 body なら空の hash、または `null` + 理由コード（方針を開始前に固定） |
-| `eligibilityBoundaryAt` | **設定しない / null**（欠損は決定根拠に使わない） |
+| `fetchedAt` | 最終試行時刻（required） |
+| `ingestedAt` | 欠損レコード確定時刻（required） |
+| `rawPayloadHash` | **null**（§4.1） |
+| `rawPayloadUri` | **null** |
+| `eligibilityBoundaryAt` | **null**（決定根拠にしない） |
 
 欠損を「前日値の継続」で埋めない。
 
@@ -281,13 +302,13 @@ failure レコードも append-only で残す。成功に見せかけて補完�
 
 | 項目 | 定義 |
 | --- | --- |
-| **`archiveStartAt`** | 本運用で **最初に `ingestedAt` が確定した成功観測**の時刻（UTC）。文書と manifest に明示 |
-| **coverage start** | forward 利用上 = `archiveStartAt`。それより前の暦日・セッションは **coverage 外** |
-| **coverage through** | 最新の成功 `ingestedAt`（domain/source ごと）。欠損日は through を「連続カバレッジ」と偽らない |
+| **`coverageStartAt`** | 本運用で **最初に `OBSERVED` の `ingestedAt` が確定した時刻**（UTC）。文書と manifest に明示。別名メモ: 旧称 `archiveStartAt` と同義 |
+| **`coverageThroughAt`** | domain/source ごとの **最新 `OBSERVED` の `ingestedAt`**（UTC）。`MISSING` 日があっても through を連続カバレッジと偽らない |
+| coverage 外 | `decisionAt < coverageStartAt` の区間。forward eligibility なし |
 
 **遡及禁止:**
 
-- archive 開始前に一括ダウンロードした historical bulk を、開始前 `decisionAt` の as-known として使わない  
+- `coverageStartAt` より前に一括ダウンロードした historical bulk を、開始前 `decisionAt` の as-known として使わない  
 - bulk を保存すること自体は「Retrievable 保管」としては可だが、**`eligibilityBoundaryAt` を過去へ戻さない**  
 - ラベル例: `STORAGE_ONLY_NOT_FORWARD_ELIGIBLE`（開始前 bulk）
 
@@ -415,7 +436,7 @@ Forward Research 設計ゲートを CONDITIONAL GO とする条件（本ドキ�
 
 **まだ足りない（実装・運用ゲート）:**
 
-- [ ] `archiveStartAt` の実測確定（最初の成功 ingest）
+- [ ] `coverageStartAt` / `coverageThroughAt` の実測確定（最初／最新の成功 OBSERVED ingest）
 - [ ] 圧縮と hash 対象の最終固定（運用開始前ワンタイム）
 - [ ] 最小 source 許可リストの運用承認（少数）
 - [ ] 手管理 SecurityId mapping 手順
@@ -426,7 +447,7 @@ Forward Research 設計ゲートを CONDITIONAL GO とする条件（本ドキ�
 ## 19. 次の最小作業（実装しない）
 
 1. 本設計を PR で固定する。  
-2. 運用開始時に `archiveStartAt` を文書追記する（成功 ingest 後）。  
+2. 運用開始時に `coverageStartAt`（および以降の `coverageThroughAt`）を文書追記する（成功 OBSERVED ingest 後）。  
 3. client 実装は別タスク。始めるなら **1 source × 1 domain** の raw 保存のみ。  
 4. Real Backtest は既存 Critical blocker 解消まで **NO-GO**。  
 
