@@ -429,6 +429,124 @@ class AlphaVantageDailyForwardArchivePocTest {
     }
 
     @Test
+    fun clientCompactOutputSizeAppearsInRequestKey() {
+        val client =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                apiKey = "secret-must-not-leak",
+                outputSize = "compact",
+            )
+        val key = client.requestKeyFor("IBM")
+        assertEquals(
+            "GET|/query|function=TIME_SERIES_DAILY|symbol=IBM|outputsize=compact",
+            key,
+        )
+        assertTrue(key.contains("outputsize=compact"))
+        assertFalse(key.contains("apikey", ignoreCase = true))
+        assertFalse(key.contains("secret", ignoreCase = true))
+    }
+
+    @Test
+    fun clientFullOutputSizeAppearsInRequestKey() {
+        val client =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                apiKey = "secret-must-not-leak",
+                outputSize = "full",
+            )
+        val key = client.requestKeyFor("IBM")
+        assertEquals(
+            "GET|/query|function=TIME_SERIES_DAILY|symbol=IBM|outputsize=full",
+            key,
+        )
+        assertTrue(key.contains("outputsize=full"))
+        assertFalse(key.contains("apikey", ignoreCase = true))
+        assertFalse(key.contains("secret", ignoreCase = true))
+    }
+
+    @Test
+    fun fullClientNeverWritesCompactRequestKeyOnManifest() {
+        val fullClient =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                outputSize = "full",
+                clock = { nextInstant() },
+            )
+        val svc =
+            AlphaVantageDailyForwardArchiveService(
+                archiveRoot = root,
+                client = fullClient,
+                clock = { nextInstant() },
+                idGenerator = { "id-${ids.incrementAndGet()}" },
+            )
+        val result = svc.archivePossessedResponse(symbol, possession(200, validBody.copyOf()))
+        assertEquals(fullClient.requestKeyFor(symbol), result.record.requestKey)
+        assertTrue(result.record.requestKey.contains("outputsize=full"))
+        assertFalse(result.record.requestKey.contains("outputsize=compact"))
+        assertFalse(result.record.requestKey.contains("apikey", ignoreCase = true))
+    }
+
+    @Test
+    fun compactAndFullAreDistinctRequestKeys() {
+        val compact =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                outputSize = "compact",
+            ).requestKeyFor("IBM")
+        val full =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                outputSize = "full",
+            ).requestKeyFor("IBM")
+        assertNotEquals(compact, full)
+        assertTrue(compact.contains("outputsize=compact"))
+        assertTrue(full.contains("outputsize=full"))
+    }
+
+    @Test
+    fun duplicateRevisionGroupingUsesActualClientRequestKey() {
+        val fullClient =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                outputSize = "full",
+                clock = { nextInstant() },
+            )
+        val svc =
+            AlphaVantageDailyForwardArchiveService(
+                archiveRoot = root,
+                client = fullClient,
+                clock = { nextInstant() },
+                idGenerator = { "id-${ids.incrementAndGet()}" },
+            )
+        val first = svc.archivePossessedResponse(symbol, possession(200, validBody.copyOf()))
+        val second = svc.archivePossessedResponse(symbol, possession(200, validBody.copyOf()))
+        val expectedKey = fullClient.requestKeyFor(symbol)
+        assertEquals(expectedKey, first.record.requestKey)
+        assertEquals(expectedKey, second.record.requestKey)
+        assertEquals(first.record.archiveId, second.record.duplicateOf)
+        assertNull(second.record.revisionCandidateOf)
+
+        // compact-key service must not see full-key rows as duplicates.
+        val compactSvc =
+            AlphaVantageDailyForwardArchiveService(
+                archiveRoot = root,
+                client =
+                    AlphaVantageDailyArchiveClient(
+                        baseUrl = "http://127.0.0.1:1",
+                        outputSize = "compact",
+                        clock = { nextInstant() },
+                    ),
+                clock = { nextInstant() },
+                idGenerator = { "id-${ids.incrementAndGet()}" },
+            )
+        val compactObs =
+            compactSvc.archivePossessedResponse(symbol, possession(200, validBody.copyOf()))
+        assertTrue(compactObs.record.requestKey.contains("outputsize=compact"))
+        assertNull(compactObs.record.duplicateOf)
+        assertNull(compactObs.record.revisionCandidateOf)
+    }
+
+    @Test
     fun hashMismatchOnWriteIsFailClosed() {
         val store = ImmutableRawStore(root)
         val bytes = "abc".toByteArray()

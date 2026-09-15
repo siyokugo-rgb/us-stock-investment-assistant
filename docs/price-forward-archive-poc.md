@@ -64,14 +64,19 @@ Reuses PR #19 common primitives: `ManifestRecord`, `ManifestStore`, `ImmutableRa
 
 ## requestKey
 
-Secret-free:
+Secret-free, derived from the **same** `AlphaVantageDailyArchiveClient` settings that issue HTTP
+(`client.requestKeyFor(symbol)`). Service does **not** hold an independent `outputSize`.
 
 ```text
-GET|/query|function=TIME_SERIES_DAILY|symbol={SYMBOL}|outputsize=compact
+GET|/query|function=TIME_SERIES_DAILY|symbol={SYMBOL}|outputsize={compact|full}
 ```
+
+Default client outputSize is `compact`. Changing client to `full` changes requestKey accordingly.
+`archivePossessedResponse` uses the same `client.requestKeyFor(symbol)` — no alternate provenance API.
 
 - API key never enters requestKey / logs / fixtures / raw paths / manifest
 - provider symbol is request identity only — **not** `externalIdentifier` / SecurityId
+- compact and full are distinct requestKeys (duplicate/revision grouping follows actual request settings)
 
 ---
 
@@ -183,6 +188,8 @@ Synthetic suite `AlphaVantageDailyForwardArchivePocTest` covers:
 10. LOCAL_ARCHIVE_FAILURE on raw write collision  
 11. Orphan detection; coverage OBSERVED-only; coverage ≠ payload trading dates  
 12. requestKey excludes API key; no SecurityId/knownAt/currency JSON fields  
+13. client outputSize compact/full drives requestKey; service has no independent outputSize  
+14. full client never writes compact requestKey; duplicate/revision grouping follows actual requestKey 
 
 Fixtures under `src/test/resources/archive/poc/alphavantage/` are **sanitized / synthetic**.
 

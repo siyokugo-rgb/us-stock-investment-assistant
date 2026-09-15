@@ -102,6 +102,12 @@ class AlphaVantageDailyArchiveClient(
         }
     }
 
+    /**
+     * Secret-free request identity derived from **this client's** actual HTTP settings
+     * (including [outputSize] used by [executeDaily]). Never invents a different outputSize.
+     */
+    fun requestKeyFor(symbol: String): String = requestKey(symbol, outputSize)
+
     companion object {
         const val DEFAULT_BASE_URL = "https://www.alphavantage.co"
         const val QUERY_PATH = "/query"

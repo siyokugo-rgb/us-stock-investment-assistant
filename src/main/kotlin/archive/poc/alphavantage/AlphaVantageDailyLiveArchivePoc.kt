@@ -30,7 +30,7 @@ fun main() {
     println("domain=${AlphaVantageDailyArchiveClient.DOMAIN}")
     println("source=${AlphaVantageDailyArchiveClient.SOURCE}")
     println("symbol=$symbol (provider symbol only; not SecurityId)")
-    println("requestKey=${AlphaVantageDailyArchiveClient.requestKey(symbol)}")
+    println("requestKey=${client.requestKeyFor(symbol)}")
     println("archiveRoot=$root")
     val result = service.archiveDaily(symbol)
     val r = result.record

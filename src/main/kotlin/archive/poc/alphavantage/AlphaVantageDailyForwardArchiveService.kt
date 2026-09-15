@@ -35,7 +35,6 @@ class AlphaVantageDailyForwardArchiveService(
     private val client: AlphaVantageDailyArchiveClient,
     private val clock: () -> Instant = { Instant.now() },
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
-    private val outputSize: String = AlphaVantageDailyArchiveClient.DEFAULT_OUTPUT_SIZE,
 ) {
     private val rawStore = ImmutableRawStore(archiveRoot)
     private val manifestStore =
@@ -67,7 +66,8 @@ class AlphaVantageDailyForwardArchiveService(
         symbol: String,
         possession: AlphaVantageHttpPossession,
     ): AlphaVantageDailyArchiveResult {
-        val requestKey = AlphaVantageDailyArchiveClient.requestKey(symbol, outputSize)
+        // Provenance must match the client settings that generate HTTP requests.
+        val requestKey = client.requestKeyFor(symbol)
         val archiveId = idGenerator()
         val priors =
             manifestStore.findByRequestKey(
