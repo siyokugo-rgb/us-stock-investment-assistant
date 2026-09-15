@@ -128,6 +128,38 @@ Alpha Vantage `symbol` は **request provenance** のみ。
 
 単独 ticker join は **禁止維持**。
 
+#### Binding evidence（provider symbol ↔ OpenFIGI external id）
+
+provider symbol 文字列と OpenFIGI response 上の ticker / FIGI が一致するだけでは **join 禁止**。
+
+必要なのは、Price 側 provider symbol と Security Master 側 external id を結ぶ **binding evidence** である。
+
+概念例（実装禁止・文書概念のみ）:
+
+```text
+ProviderSymbolBindingEvidence
+  priceProvider                 // e.g. alphavantage
+  providerSymbol                // request provenance only
+  mappingArchiveId              // OpenFIGI OBSERVED archive
+  mappingRequestKey             // secret-free request identity
+  mappingRequestInput           // idType, idValue, venue条件? 等
+  bindingEligibilityBoundaryAt  // forward eligibility only; not historical knownAt
+```
+
+意味:
+
+- AV `symbol` と OpenFIGI `ticker` の **文字列一致 alone = FAIL**
+- OpenFIGI mapping の **request input**（何を問い合わせてその FIGI を得たか）が後から検証できる必要がある
+- response 側 FIGI だけでは「どの provider symbol に対する mapping か」を安全に固定できない
+
+**現状判定（main）:**
+
+- OpenFIGI archive は **response body** を immutable 保存する
+- `requestKey = POST|/v3/mapping|sha256:{requestBodySha256}` はあるが、**request body 自体は raw として永続化されていない**
+- したがって後から `idType` / `idValue` / `exchCode` 等の request input を archive から再現・監査できない
+
+→ Join Candidate 実装より先に、**OpenFIGI Mapping Request Provenance 補強**が必要（§16）。
+
 ### B. OpenFIGI identity evidence
 
 | Field | Evidence meaning | Not meaning |
@@ -248,11 +280,13 @@ Price observation を特定 `SecurityId` に forward-only で帰属させるた�
 | `priceEligibilityBoundaryAt` | Price evidence が usable になる最早時刻 |
 | `mappingArchiveId` | SECURITY_MASTER possession |
 | mapping `externalIdentifierNamespace` + `externalIdentifier` | 安定外部 id（現状は一意 `figi` のみ自動載荷） |
+| **`ProviderSymbolBindingEvidence`** | provider symbol ↔ external id の **binding**（文字列一致 alone 禁止） |
 | share-class evidence | 複数 class があり得る場合の必須分離 |
 | venue evidence | dual-list / listing 曖昧性がある場合の必須分離（`exchCode` は補助、MIC モデルは未整備） |
 | `mappingEligibilityBoundaryAt` | mapping evidence の forward 境界 |
+| `bindingEligibilityBoundaryAt` | binding evidence が独立時刻を持つ場合の forward 境界 |
 | ambiguity count == 0（Fail-Closed） | 複数 FIGI / overlap / conflict で自動確定禁止 |
-| trading currency evidence（DailyPrice 用） | identity とは別；明示 trading currency のみ |
+| trading currency evidence（DailyPrice 用） | **identity / SecurityId 発行とは別**；明示 trading currency のみ |
 
 **概念上の最小 join candidate（実装禁止・文書概念のみ）:**
 
@@ -260,12 +294,13 @@ Price observation を特定 `SecurityId` に forward-only で帰属させるた�
 PriceSecurityJoinCandidate
   priceArchiveId
   mappingArchiveId
+  bindingEvidenceId?      // ProviderSymbolBindingEvidence
   providerSymbol          // provenance only
   externalIdentifierNamespace
   externalIdentifier
   venueEvidence?          // exchCode / future MIC
   shareClassEvidence?
-  tradingCurrencyEvidence?
+  tradingCurrencyEvidence?  // DailyPrice path only
   joinEligibleAt
   status                  // RESOLVED | AMBIGUOUS | MISSING_* | INELIGIBLE_TIME | REVISION_CONFLICT | FORBIDDEN_BACKFILL
 ```
@@ -276,31 +311,39 @@ PriceSecurityJoinCandidate
 
 ## 5. `joinEligibleAt` (forward only)
 
-両 evidence が揃うまで join 可能扱いにしない。
+Price / mapping / binding の各 evidence が揃うまで join 可能扱いにしない。
+
+binding evidence が独立時刻を持つ場合:
 
 ```text
 joinEligibleAt =
   max(
     priceEligibilityBoundaryAt,
-    mappingEligibilityBoundaryAt
+    mappingEligibilityBoundaryAt,
+    bindingEligibilityBoundaryAt
   )
 ```
+
+binding が mapping archive と同一 eligibility に内包される設計でも、**欠落した binding を price/mapping の時刻だけで補完しない**。
 
 制約:
 
 - `joinEligibleAt >= priceEligibilityBoundaryAt`
 - `joinEligibleAt >= mappingEligibilityBoundaryAt`
-- **`joinEligibleAt` を historical `knownAt` と呼ばない**
-- retrospective へ遡及しない
-- `validFrom` / tickerStartDate / marketDate / Last Refreshed から knownAt / joinEligibleAt を生成しない
+- `joinEligibleAt >= bindingEligibilityBoundaryAt`（独立時刻がある場合）
+- **`joinEligibleAt` / `bindingEligibilityBoundaryAt` を historical `knownAt` と呼ばない**
+- binding 時刻の past backfill / retrospective 遡及 **禁止**
+- `validFrom` / tickerStartDate / marketDate / Last Refreshed から knownAt / joinEligibleAt / bindingEligibilityBoundaryAt を生成しない
 
 ### Time-direction QA
 
 | Scenario | Allowed interpretation |
 | --- | --- |
-| 09:00 Price OBSERVED、10:00 Mapping OBSERVED | 09:00 時点で identity 既知だった扱い **禁止**。join 可能は **10:00 以降** |
+| 09:00 Price OBSERVED、10:00 Mapping OBSERVED | 09:00 時点で identity 既知だった扱い **禁止**。join 可能は **10:00 以降**（binding も揃っている前提） |
 | 09:00 Mapping OBSERVED、16:30 Price OBSERVED | join 可能は **16:30 以降** |
+| binding evidence が更に遅い | `joinEligibleAt` は **binding 側**まで遅らせる |
 | current mapping を old price へ backfill | **FORBIDDEN** |
+| AV symbol と OpenFIGI ticker 文字列一致のみで過去へ結ぶ | **FORBIDDEN**（binding evidence 不足） |
 
 ---
 
@@ -338,14 +381,27 @@ joinEligibleAt =
 
 内部 `SecurityId` を **新規発行してよい**最小条件（コード実装なし）:
 
-1. stable external id + namespace が一意（例: `figi` + 単一 FIGI）
-2. security / share-class 粒度が明確（必要なら `shareClassFIGI` 等）
-3. listing/venue 粒度が用途上必要なら充足（dual-list では MIC/venue MUST）
-4. ambiguity count = 0
-5. forward provenance あり（mapping archive OBSERVED + `eligibilityBoundaryAt`）
-6. Issuer 関係は **別ゲート**（自動で Issuer から単一 Security を選ばない）
+1. provider symbol ↔ external id の **binding evidence** が成立（文字列一致 alone 禁止）
+2. stable external id + namespace が一意（例: `figi` + 単一 FIGI）
+3. security / share-class 粒度が明確（必要なら `shareClassFIGI` 等）
+4. listing/venue 粒度が用途上必要なら充足（dual-list では MIC/venue MUST）
+5. validity / ticker history が用途上必要なら充足（current snapshot の過去逆適用禁止）
+6. ambiguity count = 0 / revision conflict なし
+7. forward provenance あり（mapping archive OBSERVED + eligibility / binding boundary）
+8. Issuer 関係は **別ゲート**（自動で Issuer から単一 Security を選ばない）
 
-**現時点:** OpenFIGI raw archive だけでは ticker history / trading currency / 正式 MIC / revision ledger が不足 → **SecurityId issuance = NO-GO**。
+### SecurityId NO-GO 理由（identity 側のみ）
+
+**現時点 SecurityId issuance = NO-GO。理由は identity 側に限定する:**
+
+- provider symbol ↔ OpenFIGI external id の **binding evidence 未成立**（request input 再現不可）
+- venue / listing 粒度不足（正式 MIC モデルなし；dual-list リスク）
+- share-class 粒度不足（必須モデルなし）
+- validity / ticker history 不足
+- ambiguity / revision の意味的解決ルール未整備
+
+**trading currency は SecurityId issuance blocker に含めない。**  
+trading currency は **DailyPrice mapping blocker のみ**（§8）。
 
 ---
 
@@ -355,12 +411,17 @@ joinEligibleAt =
 
 | Requirement | Current state |
 | --- | --- |
-| resolved `SecurityId` | NO-GO（上節） |
-| explicit **trading** currency | UNRESOLVED（AV daily / OpenFIGI とも不足） |
+| resolved `SecurityId` | NO-GO（§7 identity 側） |
+| explicit **trading** currency | UNRESOLVED（AV daily / OpenFIGI とも不足）→ **DailyPrice 専用 blocker** |
 | raw OHLCV validation | PRICE archive validation は possession 用に存在。domain mapping は未着手 |
 | forward eligibility | archive 境界は存在 |
 | raw vs adjusted 境界 | TIME_SERIES_DAILY only（adjusted 混在禁止維持） |
 | historical `knownAt` | UNRESOLVED / UNUSABLE（Backtest 用）。Forward research でも `DailyPrice.knownAt` を捏造しない |
+
+**責務分離:**
+
+- SecurityId issuance ↔ identity / binding / venue / class / validity / ambiguity
+- DailyPrice mapping ↔ SecurityId 解決 **後**の trading currency + OHLCV + eligibility
 
 **DailyPrice mapping = NO-GO**。
 
@@ -372,12 +433,14 @@ joinEligibleAt =
 | --- | --- | --- |
 | 1 | symbol only | **FAIL**（identity / DailyPrice とも） |
 | 2 | symbol + unique FIGI, venue unknown | Identity **候補のみ（PARTIAL）**。SecurityId issuance **NO-GO**（dual-list/class リスク未遮断）。DailyPrice **NO-GO** |
-| 3 | unique FIGI + share class + venue, currency unknown | Security **identity 候補は前進可**。SecurityId issuance は履歴/revision 不足でなお **NO-GO（厳格）** / 将来条件付き。DailyPrice **NO-GO** |
-| 4 | identity + venue + **trading currency** + 両 archive OBSERVED | Forward join **候補**（`joinEligibleAt=max(...)`）。なお historical knownAt / CA PIT が無い限り Real Backtest は NO-GO |
+| 3 | unique FIGI + share class + venue, currency unknown | Security **identity 候補は前進可**（binding 成立前提）。SecurityId issuance は履歴/revision 不足でなお **NO-GO（厳格）**。DailyPrice **NO-GO**（currency blocker） |
+| 4 | identity + venue + **trading currency** + 両 archive OBSERVED + binding | Forward join **候補**（`joinEligibleAt=max(price, mapping, binding)`）。なお historical knownAt / CA PIT が無い限り Real Backtest は NO-GO |
 | 5 | mapping が Price より後 | `joinEligibleAt` は **後側**。Price 時刻への遡及禁止 |
 | 6 | 複数 FIGI | **AMBIGUOUS**（自動確定禁止） |
 | 7 | current mapping → old price | **FORBIDDEN** |
 | 8 | ticker reuse | **FORBIDDEN / UNRESOLVED** |
+| 9 | AV symbol と OpenFIGI ticker **文字列一致のみ**（request input / binding なし） | **FAIL / binding evidence 不足**。join 禁止。SecurityId 自動発行なし |
+| 10 | OpenFIGI mapping request input 明示 + one candidate + venue 等明示 | **forward binding candidate** 可。ただし **SecurityId 自動発行なし**。DailyPrice は currency 等で別判定 |
 
 ---
 
@@ -406,7 +469,7 @@ joinEligibleAt =
 | D | trading currency は解決したか | **未解決** |
 | E | venue/MIC 不足は Critical か High か | DailyPrice / dual-list 向け **Critical**。狭義 identity 候補検討では **High（保留可）** |
 | F | OpenFIGI 単独で足りるか | **足りない** |
-| G | 次の最小作業 | **A. Forward Security Mapping Evidence 実装**（OpenFIGI OBSERVED raw を、SecurityId を発行せずに forward mapping evidence / join candidate 入力へ落とす境界。currency / DailyPrice / Backtest は含めない） |
+| G | 次の最小作業 | **OpenFIGI Mapping Request Provenance 補強**（request body / idType・idValue・venue 条件を後から検証可能にする。Join Candidate / SecurityId / DailyPrice は含めない） |
 
 ---
 
@@ -414,10 +477,11 @@ joinEligibleAt =
 
 ### Critical
 
-1. Trading currency evidence 不在 → DailyPrice 不可  
-2. Historical knownAt / retrospective Security Master 不在 → Real Backtest NO-GO  
-3. CA PIT / survivorship / universe entitlement 等の既存 Critical（本 Gate で解消しない）  
-4. ticker-only / current-mapping backfill を許せば identity 破壊（禁止維持が必須）
+1. provider symbol ↔ OpenFIGI external id の **binding / request provenance 不足** → 安全 join 不可  
+2. Trading currency evidence 不在 → **DailyPrice 不可**（SecurityId issuance とは分離）  
+3. Historical knownAt / retrospective Security Master 不在 → Real Backtest NO-GO  
+4. CA PIT / survivorship / universe entitlement 等の既存 Critical（本 Gate で解消しない）  
+5. ticker-only / string-match-only / current-mapping backfill を許せば identity 破壊（禁止維持が必須）
 
 ### High
 
@@ -463,21 +527,30 @@ joinEligibleAt =
 
 ## 16. Next minimal work (choose one)
 
-**推奨: A. Forward Security Mapping Evidence 実装**
+### 再判定結果
+
+OpenFIGI request-side provenance は **不十分**:
+
+- response raw は保存される
+- `requestKey` は request body SHA-256 を含むが、**request body 自体が archive に残らない**
+- 後から `idType` / `idValue` / `exchCode` 等を検証できない
+- よって provider symbol ↔ FIGI の binding を Fail-Closed に固定できない
+
+**次の最小作業（1つ）: OpenFIGI Mapping Request Provenance 補強**
 
 範囲（将来 PR）:
 
-- OpenFIGI OBSERVED archive を入力に、SecurityId 非発行の mapping evidence / join-candidate 記録
-- `joinEligibleAt = max(priceEligibilityBoundaryAt, mappingEligibilityBoundaryAt)` の文書実装対応
-- ambiguity Fail-Closed
-- **含めない:** SecurityId 自動発行、DailyPrice、currency 推測、Backtest、Android
+- mapping request input（idType / idValue / venue 条件等）を secret なしで後から検証可能にする
+- `ProviderSymbolBindingEvidence` の前提を満たす request-side provenance
+- **含めない:** Join Candidate 本実装、SecurityId 自動発行、DailyPrice、currency 推測、Backtest、Android
 
-代替（本 Gate では次点）:
+**十分になった後の次点:** Forward Security Mapping Evidence（binding 成立後の join candidate 境界）
 
-- B. Trading Currency source PoC  
-- C. Venue/MIC evidence model  
-- D. SecurityId issuance boundary（文書＋将来実装）  
-- E. Price→Security join candidate（A の一部として吸収推奨）
+その他の次点:
+
+- Trading Currency source PoC（DailyPrice 専用）  
+- Venue/MIC evidence model  
+- SecurityId issuance boundary（文書＋将来実装）
 
 ---
 
