@@ -78,3 +78,13 @@ tasks.register<JavaExec>("alphaVantageDividendPoc") {
     mainClass.set("dividend.poc.AlphaVantageDividendLivePocKt")
     isIgnoreExitValue = false
 }
+
+// Live OpenFIGI mapping forward archive PoC. Optional OPENFIGI_API_KEY. No mock fallback.
+tasks.register<JavaExec>("openFigiForwardArchivePoc") {
+    group = "verification"
+    description =
+        "Run live OpenFIGI /v3/mapping forward self-archive PoC (Fail-Closed; no SecurityId; no knownAt invention)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("archive.poc.openfigi.OpenFigiLiveArchivePocKt")
+    isIgnoreExitValue = true
+}
