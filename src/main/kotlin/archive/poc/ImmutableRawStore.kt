@@ -1,0 +1,76 @@
+package archive.poc
+
+import java.nio.file.Files
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+
+/**
+ * Immutable raw object store: temp write → hash verify → atomic move into final path.
+ * Never overwrites an existing final object.
+ */
+class ImmutableRawStore(
+    private val archiveRoot: Path,
+) {
+    fun writeImmutable(
+        relativeDir: String,
+        archiveId: String,
+        payload: ByteArray,
+        expectedSha256Hex: String,
+    ): Path {
+        require(archiveId.isNotBlank())
+        require(expectedSha256Hex == Sha256Hex.of(payload)) {
+            "Hash mismatch before write: expected=$expectedSha256Hex actual=${Sha256Hex.of(payload)}"
+        }
+
+        val dir = archiveRoot.resolve(relativeDir).normalize()
+        if (!dir.startsWith(archiveRoot.normalize())) {
+            throw ArchiveIoException("Refusing path escape: $dir")
+        }
+        Files.createDirectories(dir)
+
+        val finalPath = dir.resolve("$archiveId.raw")
+        if (Files.exists(finalPath)) {
+            throw ArchiveIoException("Raw path collision: $finalPath")
+        }
+
+        val tmp = dir.resolve("$archiveId.raw.tmp")
+        try {
+            Files.write(
+                tmp,
+                payload,
+                StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE,
+            )
+            val onDisk = Files.readAllBytes(tmp)
+            val onDiskHash = Sha256Hex.of(onDisk)
+            if (onDiskHash != expectedSha256Hex) {
+                throw ArchiveIoException("Hash verification failed after temp write: $onDiskHash")
+            }
+            try {
+                Files.move(tmp, finalPath, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(tmp, finalPath)
+            }
+        } catch (e: ArchiveIoException) {
+            runCatching { Files.deleteIfExists(tmp) }
+            throw e
+        } catch (e: Exception) {
+            runCatching { Files.deleteIfExists(tmp) }
+            throw ArchiveIoException("Raw write failed for $archiveId: ${e.message}", e)
+        }
+
+        val finalBytes = Files.readAllBytes(finalPath)
+        val finalHash = Sha256Hex.of(finalBytes)
+        if (finalHash != expectedSha256Hex) {
+            throw ArchiveIoException("Hash verification failed after finalize: $finalHash")
+        }
+        return finalPath
+    }
+}
+
+class ArchiveIoException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)

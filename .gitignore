@@ -16,3 +16,8 @@ kotlin-js-store/
 *.aab
 android-smoke/build/
 
+# Forward self-archive runtime (never commit live provider payloads)
+archive-runtime/
+**/archive-runtime/
+*.raw.tmp
+

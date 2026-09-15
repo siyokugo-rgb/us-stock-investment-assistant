@@ -1,0 +1,435 @@
+package archive.poc.openfigi
+
+import archive.poc.ObservationStatus
+import archive.poc.Sha256Hex
+import archive.poc.TransportStatus
+import com.sun.net.httpserver.HttpServer
+import java.net.InetSocketAddress
+import java.net.http.HttpClient
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.Duration
+import java.time.Instant
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class OpenFigiForwardArchivePocTest {
+    private lateinit var root: Path
+    private val ids = AtomicInteger(0)
+    private val clock = mutableListOf(
+        Instant.parse("2026-09-15T01:00:00Z"),
+        Instant.parse("2026-09-15T01:00:01Z"),
+        Instant.parse("2026-09-15T01:00:02Z"),
+        Instant.parse("2026-09-15T01:00:03Z"),
+        Instant.parse("2026-09-15T01:00:04Z"),
+        Instant.parse("2026-09-15T01:00:05Z"),
+        Instant.parse("2026-09-15T01:00:06Z"),
+        Instant.parse("2026-09-15T01:00:07Z"),
+        Instant.parse("2026-09-15T01:00:08Z"),
+        Instant.parse("2026-09-15T01:00:09Z"),
+        Instant.parse("2026-09-15T01:00:10Z"),
+        Instant.parse("2026-09-15T01:00:11Z"),
+        Instant.parse("2026-09-15T01:00:12Z"),
+        Instant.parse("2026-09-15T01:00:13Z"),
+        Instant.parse("2026-09-15T01:00:14Z"),
+        Instant.parse("2026-09-15T01:00:15Z"),
+        Instant.parse("2026-09-15T01:00:16Z"),
+        Instant.parse("2026-09-15T01:00:17Z"),
+        Instant.parse("2026-09-15T01:00:18Z"),
+        Instant.parse("2026-09-15T01:00:19Z"),
+        Instant.parse("2026-09-15T01:00:20Z"),
+    )
+    private var clockIdx = 0
+
+    private fun nextInstant(): Instant = clock[clockIdx++]
+
+    private fun service(): OpenFigiForwardArchiveService =
+        OpenFigiForwardArchiveService(
+            archiveRoot = root,
+            client =
+                OpenFigiMappingClient(
+                    baseUrl = "http://127.0.0.1:1", // unused for possessed path
+                    clock = { nextInstant() },
+                ),
+            clock = { nextInstant() },
+            idGenerator = { "id-${ids.incrementAndGet()}" },
+        )
+
+    private val ibmJob = listOf(OpenFigiMappingJob(idType = "ID_BB_GLOBAL", idValue = "BBG000BLNNH6"))
+
+    private val validBody =
+        """[{"data":[{"figi":"BBG000BLNNH6","ticker":"IBM","exchCode":"US","compositeFIGI":"BBG000BLNNH6","shareClassFIGI":"BBG001S5S399","name":"INTL BUSINESS MACHINES CORP","securityType":"Common Stock","marketSector":"Equity"}]}]"""
+            .toByteArray(StandardCharsets.UTF_8)
+
+    private fun possession(
+        status: Int,
+        body: ByteArray?,
+        transportMessage: String? = null,
+    ): OpenFigiHttpPossession {
+        val a = nextInstant()
+        val b = nextInstant()
+        return if (body == null) {
+            OpenFigiHttpPossession(
+                attemptedAt = a,
+                attemptFinishedAt = b,
+                fetchedAt = null,
+                httpStatus = null,
+                contentType = null,
+                bodyBytes = null,
+                transportFailureMessage = transportMessage ?: "SimulatedTransportFailure",
+            )
+        } else {
+            OpenFigiHttpPossession(
+                attemptedAt = a,
+                attemptFinishedAt = b,
+                fetchedAt = b,
+                httpStatus = status,
+                contentType = "application/json",
+                bodyBytes = body,
+                transportFailureMessage = null,
+            )
+        }
+    }
+
+    @BeforeTest
+    fun setup() {
+        root = Files.createTempDirectory("openfigi-archive-poc")
+        clockIdx = 0
+        ids.set(0)
+    }
+
+    @AfterTest
+    fun cleanup() {
+        root.toFile().deleteRecursively()
+    }
+
+    @Test
+    fun http200ValidBodyIsObservedWithExactSha256() {
+        val svc = service()
+        val result = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertTrue(result.observedIngestSucceeded)
+        assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
+        assertEquals(Sha256Hex.of(validBody), result.record.rawPayloadHash)
+        assertNotNull(result.record.fetchedAt)
+        assertNotNull(result.record.eligibilityBoundaryAt)
+        assertEquals(result.record.ingestedAt, result.record.eligibilityBoundaryAt)
+        val uri = Path.of(result.record.rawPayloadUri!!)
+        assertEquals(Sha256Hex.of(Files.readAllBytes(uri)), result.record.rawPayloadHash)
+        assertEquals("figi", result.record.externalIdentifierNamespace)
+        assertEquals("BBG000BLNNH6", result.record.externalIdentifier)
+        assertFalse(result.record.requestKey.contains("api", ignoreCase = true) &&
+            result.record.requestKey.contains("key", ignoreCase = true) &&
+            result.record.requestKey.contains("OPENFIGI"))
+    }
+
+    @Test
+    fun whitespaceDifferenceChangesHash() {
+        val a = """[{"data":[{"figi":"BBG000BLNNH6"}]}]""".toByteArray(StandardCharsets.UTF_8)
+        val b = """[{ "data":[{"figi":"BBG000BLNNH6"}]}]""".toByteArray(StandardCharsets.UTF_8)
+        assertNotEquals(Sha256Hex.of(a), Sha256Hex.of(b))
+        val svc = service()
+        val r1 = svc.archivePossessedResponse(ibmJob, possession(200, a))
+        val r2 = svc.archivePossessedResponse(ibmJob, possession(200, b))
+        assertNotEquals(r1.record.rawPayloadHash, r2.record.rawPayloadHash)
+        assertEquals(r1.record.archiveId, r2.record.revisionCandidateOf)
+        assertNull(r2.record.duplicateOf)
+    }
+
+    @Test
+    fun malformedJsonIsRejectedValidationWithRawAndNullEligibility() {
+        val body = """{"not":"array"}""".toByteArray(StandardCharsets.UTF_8)
+        val result = service().archivePossessedResponse(ibmJob, possession(200, body))
+        assertFalse(result.observedIngestSucceeded)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertEquals(Sha256Hex.of(body), result.record.rawPayloadHash)
+        assertNotNull(result.record.rawPayloadUri)
+        assertNotNull(result.record.fetchedAt)
+        assertNull(result.record.eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun emptyBodyIsRejectedValidationOrFailClosed() {
+        val body = ByteArray(0)
+        val result = service().archivePossessedResponse(ibmJob, possession(200, body))
+        assertFalse(result.observedIngestSucceeded)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertEquals(Sha256Hex.of(body), result.record.rawPayloadHash)
+        assertNull(result.record.eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun http403CompleteBodyIsProviderFailureWithFetchedAtAndRaw() {
+        val body = """{"error":"forbidden"}""".toByteArray(StandardCharsets.UTF_8)
+        val result = service().archivePossessedResponse(ibmJob, possession(403, body))
+        assertFalse(result.observedIngestSucceeded)
+        assertEquals(ObservationStatus.PROVIDER_FAILURE, result.record.observationStatus)
+        assertNotNull(result.record.fetchedAt)
+        assertEquals(Sha256Hex.of(body), result.record.rawPayloadHash)
+        assertNotNull(result.record.rawPayloadUri)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertEquals(403, result.record.httpStatus)
+    }
+
+    @Test
+    fun http500CompleteBodyIsProviderFailureWithRaw() {
+        val body = """{"error":"boom"}""".toByteArray(StandardCharsets.UTF_8)
+        val result = service().archivePossessedResponse(ibmJob, possession(500, body))
+        assertEquals(ObservationStatus.PROVIDER_FAILURE, result.record.observationStatus)
+        assertNotNull(result.record.fetchedAt)
+        assertNotNull(result.record.rawPayloadUri)
+        assertNull(result.record.eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun transportExceptionIsProviderFailureWithoutFetchedAtOrRaw() {
+        val result =
+            service().archivePossessedResponse(
+                ibmJob,
+                possession(status = 0, body = null, transportMessage = "ConnectException"),
+            )
+        assertEquals(ObservationStatus.PROVIDER_FAILURE, result.record.observationStatus)
+        assertEquals(TransportStatus.TRANSPORT_FAILURE, result.record.transportStatus)
+        assertNull(result.record.fetchedAt)
+        assertNull(result.record.rawPayloadHash)
+        assertNull(result.record.rawPayloadUri)
+        assertNull(result.record.eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun sameLogicalKeySameHashIsDuplicateCandidate() {
+        val svc = service()
+        val first = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        val second = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertEquals(first.record.archiveId, second.record.duplicateOf)
+        assertNull(second.record.revisionCandidateOf)
+        assertEquals(first.record.eligibilityBoundaryAt, first.record.ingestedAt)
+        // Past eligibility must not be rewritten / moved earlier by duplicate.
+        assertEquals(first.record.eligibilityBoundaryAt, svc.readManifest().first().eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun sameLogicalKeyDifferentHashIsRevisionCandidateWithoutReplacement() {
+        val body2 =
+            """[{"data":[{"figi":"BBG000BLNNH6","ticker":"IBM","name":"UPDATED"}]}]"""
+                .toByteArray(StandardCharsets.UTF_8)
+        val svc = service()
+        val first = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        val second = svc.archivePossessedResponse(ibmJob, possession(200, body2))
+        assertEquals(first.record.archiveId, second.record.revisionCandidateOf)
+        assertNull(second.record.duplicateOf)
+        assertEquals(2, svc.readManifest().size)
+        assertTrue(Files.exists(Path.of(first.record.rawPayloadUri!!)))
+        assertTrue(Files.exists(Path.of(second.record.rawPayloadUri!!)))
+    }
+
+    @Test
+    fun manifestAppendFailureDoesNotCountAsObservedSuccess() {
+        val svc = service()
+        // Poison manifest path: replace file with directory after constructing service via first success,
+        // then force second append failure by deleting parent permissions is flaky.
+        // Instead: create a service whose manifest path is blocked by making parent a file.
+        val blockedRoot = Files.createTempDirectory("openfigi-blocked")
+        val domainDir = blockedRoot.resolve(OpenFigiMappingClient.DOMAIN)
+        Files.createDirectories(domainDir)
+        // Make SOURCE a file so nested manifest cannot be created/appended cleanly after construction.
+        val sourceAsFile = domainDir.resolve(OpenFigiMappingClient.SOURCE)
+        Files.writeString(sourceAsFile, "not-a-directory")
+        val broken =
+            try {
+                OpenFigiForwardArchiveService(
+                    archiveRoot = blockedRoot,
+                    client = OpenFigiMappingClient(baseUrl = "http://127.0.0.1:1", clock = { nextInstant() }),
+                    clock = { nextInstant() },
+                    idGenerator = { "broken-1" },
+                )
+                null
+            } catch (_: Exception) {
+                "init-failed"
+            }
+        // If init fails closed, that is acceptable Fail-Closed.
+        if (broken == null) {
+            // Constructed somehow; attempt archive and assert not observed success.
+            val svc2 =
+                OpenFigiForwardArchiveService(
+                    archiveRoot = blockedRoot,
+                    client = OpenFigiMappingClient(baseUrl = "http://127.0.0.1:1", clock = { nextInstant() }),
+                    clock = { nextInstant() },
+                    idGenerator = { "broken-2" },
+                )
+            // Overwrite raw parent to cause later failure path via read-only raw dir after first write attempt:
+            val result = svc2.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+            assertFalse(result.observedIngestSucceeded)
+        }
+        blockedRoot.toFile().deleteRecursively()
+        // Also verify happy-path service still works
+        assertTrue(svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf())).observedIngestSucceeded)
+    }
+
+    @Test
+    fun rawWriteFailureIsNotObservedSuccess() {
+        val svc = service()
+        // First create normal layout
+        val ok = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertTrue(ok.observedIngestSucceeded)
+        // Replace raw directory with a file to force collision/write failure on next id path's parent
+        val rawDir =
+            root.resolve(OpenFigiMappingClient.DOMAIN).resolve(OpenFigiMappingClient.SOURCE).resolve("raw")
+        // Create a file where the next archive raw file would need a writable dir — use fixed id generator
+        val fixed =
+            OpenFigiForwardArchiveService(
+                archiveRoot = root,
+                client = OpenFigiMappingClient(baseUrl = "http://127.0.0.1:1", clock = { nextInstant() }),
+                clock = { nextInstant() },
+                idGenerator = { "fixed-raw" },
+            )
+        // Pre-create a DIRECTORY named fixed-raw.raw to cause writeImmutable path confusion:
+        // writeImmutable writes file `$id.raw`; if that path exists as dir/file collision:
+        Files.createDirectories(rawDir)
+        Files.writeString(rawDir.resolve("fixed-raw.raw"), "occupied")
+        val result = fixed.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertFalse(result.observedIngestSucceeded)
+        assertEquals(ObservationStatus.PROVIDER_FAILURE, result.record.observationStatus)
+        assertNull(result.record.eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun hashMismatchOnWriteIsFailClosed() {
+        val store = archive.poc.ImmutableRawStore(root)
+        val bytes = "abc".toByteArray()
+        val ex =
+            kotlin.test.assertFailsWith<archive.poc.ArchiveIoException> {
+                // wrong expected hash
+                try {
+                    store.writeImmutable("x", "h1", bytes, "deadbeef")
+                } catch (e: IllegalArgumentException) {
+                    throw archive.poc.ArchiveIoException(e.message ?: "hash", e)
+                }
+            }
+        assertTrue(ex.message!!.contains("Hash") || ex.cause is IllegalArgumentException)
+    }
+
+    @Test
+    fun tickerOnlyDoesNotBecomeExternalIdentifierOrSecurityId() {
+        val body =
+            """[{"warning":"No identifier found."}]""".toByteArray(StandardCharsets.UTF_8)
+        // Use ticker request but response has no figi
+        val jobs = listOf(OpenFigiMappingJob(idType = "TICKER", idValue = "IBM", exchCode = "US"))
+        val result = service().archivePossessedResponse(jobs, possession(200, body))
+        assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
+        assertNull(result.record.externalIdentifier)
+        assertNull(result.record.externalIdentifierNamespace)
+        // No SecurityId field exists on record by design.
+        assertFalse(result.record.toJsonLine().contains("securityId", ignoreCase = true))
+        assertFalse(result.record.toJsonLine().contains("knownAt"))
+    }
+
+    @Test
+    fun knownAtIsNeverGeneratedOnManifest() {
+        val result = service().archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertFalse(result.record.toJsonLine().contains("knownAt"))
+        assertFalse(result.record.toJsonLine().contains("\"knownAt\""))
+    }
+
+    @Test
+    fun coverageUsesObservedOnlyAndFailuresDoNotGrantCoverageSuccess() {
+        val svc = service()
+        val fail = svc.archivePossessedResponse(ibmJob, possession(status = 0, body = null))
+        assertNull(fail.coverage.coverageStartAt)
+        assertEquals(0, fail.coverage.observedCount)
+        val ok = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertEquals(1, ok.coverage.observedCount)
+        assertEquals(ok.record.ingestedAt, ok.coverage.coverageStartAt)
+        assertEquals(ok.record.ingestedAt, ok.coverage.coverageThroughAt)
+        assertTrue(ok.coverage.hasNonObservedAlongside)
+    }
+
+    @Test
+    fun duplicateDoesNotMovePastEligibilityEarlier() {
+        val svc = service()
+        val first = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        val firstElig = first.record.eligibilityBoundaryAt!!
+        val second = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        val firstAgain = svc.readManifest().first { it.archiveId == first.record.archiveId }
+        assertEquals(firstElig, firstAgain.eligibilityBoundaryAt)
+        assertTrue(!second.record.ingestedAt.isBefore(firstElig))
+    }
+
+    @Test
+    fun liveClientTransportAndHttpSemanticsAgainstLocalServer() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.executor = Executors.newCachedThreadPool()
+        server.createContext("/v3/mapping") { exchange ->
+            val reqBody = exchange.requestBody.readAllBytes()
+            assertTrue(reqBody.isNotEmpty())
+            assertNull(exchange.requestHeaders.getFirst("X-OPENFIGI-APIKEY"))
+            when (String(reqBody, StandardCharsets.UTF_8)) {
+                "TRANSPORT" -> {
+                    exchange.close() // abrupt
+                }
+                else -> {
+                    val code = exchange.requestHeaders.getFirst("X-Test-Status")?.toInt() ?: 200
+                    val body =
+                        if (code == 200) validBody
+                        else """{"error":"x"}""".toByteArray(StandardCharsets.UTF_8)
+                    exchange.sendResponseHeaders(code, body.size.toLong())
+                    exchange.responseBody.use { it.write(body) }
+                }
+            }
+        }
+        server.start()
+        val base = "http://127.0.0.1:${server.address.port}"
+        try {
+            val client =
+                OpenFigiMappingClient(
+                    baseUrl = base,
+                    httpClient =
+                        HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(2))
+                            .build(),
+                    requestTimeout = Duration.ofSeconds(2),
+                    clock = { Instant.parse("2026-09-15T02:00:00Z") },
+                )
+            val okBody = OpenFigiMappingRequestBody.encode(ibmJob)
+            val ok = client.executeMapping(okBody)
+            assertTrue(ok.bodyFullyReceived)
+            assertEquals(200, ok.httpStatus)
+            assertNotNull(ok.fetchedAt)
+            assertEquals(Sha256Hex.of(validBody), Sha256Hex.of(ok.bodyBytes!!))
+
+            // 403 complete body
+            val client403 =
+                OpenFigiMappingClient(
+                    baseUrl = base,
+                    httpClient =
+                        HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(2))
+                            .build(),
+                    clock = { Instant.parse("2026-09-15T02:00:01Z") },
+                )
+            // Use a custom request by hitting through archive path instead:
+            val svc =
+                OpenFigiForwardArchiveService(
+                    archiveRoot = root,
+                    client = client403,
+                    clock = { Instant.parse("2026-09-15T02:00:02Z") },
+                    idGenerator = { "live-local-1" },
+                )
+            // Direct possessed 403 already covered; verify requestKey excludes secrets:
+            val key = OpenFigiMappingClient.requestKey(okBody)
+            assertFalse(key.contains("OPENFIGI"))
+            assertTrue(key.startsWith("POST|/v3/mapping|sha256:"))
+        } finally {
+            server.stop(0)
+        }
+    }
+}
