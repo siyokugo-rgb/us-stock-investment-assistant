@@ -14,8 +14,12 @@ data class OpenFigiValidationOutcome(
 
 /**
  * Minimal Fail-Closed validation for OpenFIGI mapping possession.
+ *
+ * HTTP 200 alone is not OBSERVED. Provider-level mapping failure envelopes
+ * (error / warning-only / absent-or-invalid data) must not be promoted.
+ *
  * Does not assign SecurityId. Does not invent knownAt.
- * Ticker-only does not become externalIdentifier.
+ * Does not auto-pick the first FIGI among candidates.
  */
 object OpenFigiMappingValidator {
     fun validate(
@@ -52,7 +56,9 @@ object OpenFigiMappingValidator {
         }
 
         val fields = linkedSetOf<String>()
-        var figi: String? = null
+        val figis = mutableListOf<String>()
+        var dataCandidateCount = 0
+
         arr.items.forEachIndexed { idx, item ->
             val obj =
                 try {
@@ -64,46 +70,81 @@ object OpenFigiMappingValidator {
             val hasData = "data" in keys
             val hasError = "error" in keys
             val hasWarning = "warning" in keys
-            if (!(hasData || hasError || hasWarning)) {
+
+            if (hasError) {
+                fields += "error"
+                return reject("mapping[$idx] contains error; OBSERVED forbidden")
+            }
+            if (!(hasData || hasWarning)) {
                 return reject("mapping[$idx] missing data|error|warning")
             }
-            if (hasData) {
-                fields += "data"
-                val dataVal = obj.map["data"]
-                if (dataVal is ArchiveJson.Arr) {
-                    dataVal.items.forEach { row ->
-                        val rowObj = row as? ArchiveJson.Obj ?: return@forEach
-                        listOf(
-                            "figi",
-                            "compositeFIGI",
-                            "shareClassFIGI",
-                            "ticker",
-                            "exchCode",
-                            "securityType",
-                            "marketSector",
-                            "name",
-                        ).forEach { k ->
-                            if (k in rowObj.map) fields += k
-                        }
-                        if (figi == null) {
-                            val f = rowObj.map["figi"]
-                            if (f is ArchiveJson.Str && f.value.isNotBlank()) {
-                                figi = f.value
-                            }
-                        }
-                    }
+            if (hasWarning) fields += "warning"
+
+            if (!hasData) {
+                // warning-only / data absent
+                return reject("mapping[$idx] data absent; OBSERVED forbidden")
+            }
+            fields += "data"
+            val dataVal = obj.map["data"]
+            if (dataVal !is ArchiveJson.Arr) {
+                return reject("mapping[$idx].data must be array")
+            }
+            if (dataVal.items.isEmpty()) {
+                return reject("mapping[$idx].data array is empty")
+            }
+            // Official docs: warning means no FIGI found. warning+data coexistence is not
+            // confirmed safe → Fail-Closed.
+            if (hasWarning) {
+                return reject("mapping[$idx] has warning with data; Fail-Closed")
+            }
+
+            dataVal.items.forEachIndexed { rowIdx, row ->
+                val rowObj =
+                    row as? ArchiveJson.Obj
+                        ?: return reject("mapping[$idx].data[$rowIdx] must be object")
+                dataCandidateCount += 1
+                listOf(
+                    "figi",
+                    "compositeFIGI",
+                    "shareClassFIGI",
+                    "ticker",
+                    "exchCode",
+                    "securityType",
+                    "marketSector",
+                    "name",
+                ).forEach { k ->
+                    if (k in rowObj.map) fields += k
+                }
+                val f = rowObj.map["figi"]
+                if (f is ArchiveJson.Str && f.value.isNotBlank()) {
+                    figis += f.value
                 }
             }
-            if (hasError) fields += "error"
-            if (hasWarning) fields += "warning"
         }
+
+        val uniqueExternal =
+            if (
+                requestJobCount == 1 &&
+                    arr.items.size == 1 &&
+                    dataCandidateCount == 1 &&
+                    figis.size == 1
+            ) {
+                figis.single()
+            } else {
+                null
+            }
 
         return OpenFigiValidationOutcome(
             okForObserved = true,
             observedFields = fields.toList().sorted(),
-            externalIdentifier = figi,
-            externalIdentifierNamespace = figi?.let { "figi" },
-            notes = null,
+            externalIdentifier = uniqueExternal,
+            externalIdentifierNamespace = uniqueExternal?.let { "figi" },
+            notes =
+                if (uniqueExternal == null && figis.isNotEmpty()) {
+                    "figi ambiguity or multi-candidate; externalIdentifier left null"
+                } else {
+                    null
+                },
         )
     }
 

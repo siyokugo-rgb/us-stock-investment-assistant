@@ -25,7 +25,8 @@ data class OpenFigiArchiveResult(
  * OpenFIGI mapping → immutable raw archive + append-only manifest.
  *
  * Forbidden: SecurityId generation, ticker→SecurityId, knownAt invention,
- * authoritative replacement, decision use of PROVIDER_FAILURE bodies.
+ * first-FIGI auto-selection under ambiguity, authoritative replacement,
+ * decision use of PROVIDER_FAILURE / LOCAL_ARCHIVE_FAILURE bodies.
  */
 class OpenFigiForwardArchiveService(
     archiveRoot: Path,
@@ -116,7 +117,7 @@ class OpenFigiForwardArchiveService(
                         rawPayloadHash = hash,
                         contentType = possession.contentType,
                         transportStatus = TransportStatus.LOCAL_FAILURE,
-                        observationStatus = ObservationStatus.PROVIDER_FAILURE,
+                        observationStatus = ObservationStatus.LOCAL_ARCHIVE_FAILURE,
                         eligibilityBoundaryAt = null,
                         notes = "missing httpStatus despite body possession",
                     ),
@@ -130,7 +131,7 @@ class OpenFigiForwardArchiveService(
                 bodyBytes = body,
                 requestJobCount = requestJobCount,
             )
-        val status =
+        val intendedStatus =
             when {
                 httpStatus !in 200..299 -> ObservationStatus.PROVIDER_FAILURE
                 !validation.okForObserved -> ObservationStatus.REJECTED_VALIDATION
@@ -172,10 +173,11 @@ class OpenFigiForwardArchiveService(
                         fetchedAt = fetchedAt,
                         ingestedAt = clock(),
                         rawPayloadHash = hash,
+                        rawPayloadUri = null,
                         contentType = possession.contentType,
                         httpStatus = httpStatus,
                         transportStatus = TransportStatus.LOCAL_FAILURE,
-                        observationStatus = ObservationStatus.PROVIDER_FAILURE,
+                        observationStatus = ObservationStatus.LOCAL_ARCHIVE_FAILURE,
                         eligibilityBoundaryAt = null,
                         notes = "raw write failed: ${e.message}",
                         duplicateOf = duplicateOf,
@@ -209,12 +211,12 @@ class OpenFigiForwardArchiveService(
                 revisionCandidateOf = revisionCandidateOf,
                 relatedPriorObservationIds = related,
                 duplicateOf = duplicateOf,
-                observationStatus = status,
+                observationStatus = intendedStatus,
                 eligibilityBoundaryAt =
-                    if (status == ObservationStatus.OBSERVED) ingestedAt else null,
+                    if (intendedStatus == ObservationStatus.OBSERVED) ingestedAt else null,
                 notes = validation.notes,
             )
-        return commit(record, observedOk = status == ObservationStatus.OBSERVED)
+        return commit(record, observedOk = intendedStatus == ObservationStatus.OBSERVED)
     }
 
     private fun commit(
@@ -225,11 +227,20 @@ class OpenFigiForwardArchiveService(
         try {
             manifestStore.append(record)
         } catch (e: ArchiveIoException) {
+            val localFailure =
+                record.copy(
+                    observationStatus = ObservationStatus.LOCAL_ARCHIVE_FAILURE,
+                    eligibilityBoundaryAt = null,
+                    transportStatus = TransportStatus.LOCAL_FAILURE,
+                    notes =
+                        listOfNotNull(record.notes, "manifest append failed: ${e.message}")
+                            .joinToString("; "),
+                )
             return OpenFigiArchiveResult(
-                record = record,
+                record = localFailure,
                 coverage =
                     CoverageCalculator.forDomainSource(
-                        emptyList(),
+                        runCatching { manifestStore.readAll() }.getOrDefault(emptyList()),
                         OpenFigiMappingClient.DOMAIN,
                         OpenFigiMappingClient.SOURCE,
                     ),

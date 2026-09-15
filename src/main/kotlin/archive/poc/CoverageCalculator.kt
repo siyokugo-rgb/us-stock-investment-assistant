@@ -12,8 +12,8 @@ data class CoverageWindow(
 )
 
 /**
- * Coverage derived from OBSERVED rows only for (domain, source).
- * Failures do not create coverage; if present alongside OBSERVED, continuous completeness is not claimed.
+ * Coverage derived from semantic OBSERVED rows only for (domain, source).
+ * REJECTED_VALIDATION / PROVIDER_FAILURE / LOCAL_ARCHIVE_FAILURE / MISSING never grant coverage.
  */
 object CoverageCalculator {
     fun forDomainSource(

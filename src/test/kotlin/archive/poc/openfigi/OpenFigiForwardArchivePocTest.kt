@@ -1,5 +1,6 @@
 package archive.poc.openfigi
 
+import archive.poc.ManifestRecord
 import archive.poc.ObservationStatus
 import archive.poc.Sha256Hex
 import archive.poc.TransportStatus
@@ -298,8 +299,10 @@ class OpenFigiForwardArchivePocTest {
         Files.writeString(rawDir.resolve("fixed-raw.raw"), "occupied")
         val result = fixed.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
         assertFalse(result.observedIngestSucceeded)
-        assertEquals(ObservationStatus.PROVIDER_FAILURE, result.record.observationStatus)
+        assertEquals(ObservationStatus.LOCAL_ARCHIVE_FAILURE, result.record.observationStatus)
         assertNull(result.record.eligibilityBoundaryAt)
+        assertNotNull(result.record.fetchedAt)
+        assertNotNull(result.record.rawPayloadHash)
     }
 
     @Test
@@ -319,18 +322,193 @@ class OpenFigiForwardArchivePocTest {
     }
 
     @Test
-    fun tickerOnlyDoesNotBecomeExternalIdentifierOrSecurityId() {
+    fun warningOnlyIsNotObserved() {
         val body =
             """[{"warning":"No identifier found."}]""".toByteArray(StandardCharsets.UTF_8)
-        // Use ticker request but response has no figi
         val jobs = listOf(OpenFigiMappingJob(idType = "TICKER", idValue = "IBM", exchCode = "US"))
         val result = service().archivePossessedResponse(jobs, possession(200, body))
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertFalse(result.observedIngestSucceeded)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertNull(result.record.externalIdentifier)
+        assertFalse(result.record.toJsonLine().contains("securityId", ignoreCase = true))
+        assertFalse(result.record.toJsonLine().contains("knownAt"))
+    }
+
+    @Test
+    fun errorOnlyIsNotObserved() {
+        val body = """[{"error":"Unexpected error"}]""".toByteArray(StandardCharsets.UTF_8)
+        val result = service().archivePossessedResponse(ibmJob, possession(200, body))
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertNull(result.record.eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun dataMustBeNonEmptyArrayOfObjects() {
+        val dataAsString = """[{"data":"BBG000BLNNH6"}]""".toByteArray(StandardCharsets.UTF_8)
+        val dataAsObject = """[{"data":{"figi":"BBG000BLNNH6"}}]""".toByteArray(StandardCharsets.UTF_8)
+        val emptyArr = """[{"data":[]}]""".toByteArray(StandardCharsets.UTF_8)
+        val badRow = """[{"data":["x"]}]""".toByteArray(StandardCharsets.UTF_8)
+        for (body in listOf(dataAsString, dataAsObject, emptyArr, badRow)) {
+            val result = service().archivePossessedResponse(ibmJob, possession(200, body))
+            assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus, String(body))
+            assertNull(result.record.eligibilityBoundaryAt)
+        }
+    }
+
+    @Test
+    fun warningWithDataIsFailClosedNotObserved() {
+        val body =
+            """[{"warning":"No identifier found.","data":[{"figi":"BBG000BLNNH6"}]}]"""
+                .toByteArray(StandardCharsets.UTF_8)
+        val result = service().archivePossessedResponse(ibmJob, possession(200, body))
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertNull(result.record.eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun rejectedValidationDoesNotGrantCoverage() {
+        val svc = service()
+        val rejected =
+            svc.archivePossessedResponse(
+                ibmJob,
+                possession(200, """[{"warning":"No identifier found."}]""".toByteArray(StandardCharsets.UTF_8)),
+            )
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, rejected.record.observationStatus)
+        assertEquals(0, rejected.coverage.observedCount)
+        assertNull(rejected.coverage.coverageStartAt)
+    }
+
+    @Test
+    fun singleJobSingleCandidateSetsFigiExternalIdentifier() {
+        val result = service().archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
+        assertEquals("BBG000BLNNH6", result.record.externalIdentifier)
+        assertEquals("figi", result.record.externalIdentifierNamespace)
+    }
+
+    @Test
+    fun multipleDataCandidatesLeaveExternalIdentifierNull() {
+        val body =
+            """[{"data":[{"figi":"BBG000BLNNH6"},{"figi":"BBG000BLNNH7"}]}]"""
+                .toByteArray(StandardCharsets.UTF_8)
+        val result = service().archivePossessedResponse(ibmJob, possession(200, body))
         assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
         assertNull(result.record.externalIdentifier)
         assertNull(result.record.externalIdentifierNamespace)
-        // No SecurityId field exists on record by design.
-        assertFalse(result.record.toJsonLine().contains("securityId", ignoreCase = true))
-        assertFalse(result.record.toJsonLine().contains("knownAt"))
+    }
+
+    @Test
+    fun multipleJobsLeaveRecordLevelExternalIdentifierNull() {
+        val jobs =
+            listOf(
+                OpenFigiMappingJob(idType = "ID_BB_GLOBAL", idValue = "BBG000BLNNH6"),
+                OpenFigiMappingJob(idType = "ID_BB_GLOBAL", idValue = "BBG000B9XRY4"),
+            )
+        val body =
+            """[{"data":[{"figi":"BBG000BLNNH6"}]},{"data":[{"figi":"BBG000B9XRY4"}]}]"""
+                .toByteArray(StandardCharsets.UTF_8)
+        val result = service().archivePossessedResponse(jobs, possession(200, body))
+        assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
+        assertNull(result.record.externalIdentifier)
+    }
+
+    @Test
+    fun localArchiveFailureExcludedFromCoverage() {
+        val svc = service()
+        val ok = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertEquals(1, ok.coverage.observedCount)
+        val rawDir =
+            root.resolve(OpenFigiMappingClient.DOMAIN).resolve(OpenFigiMappingClient.SOURCE).resolve("raw")
+        Files.writeString(rawDir.resolve("cov-fail.raw"), "occupied")
+        val failSvc =
+            OpenFigiForwardArchiveService(
+                archiveRoot = root,
+                client = OpenFigiMappingClient(baseUrl = "http://127.0.0.1:1", clock = { nextInstant() }),
+                clock = { nextInstant() },
+                idGenerator = { "cov-fail" },
+            )
+        val fail = failSvc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertEquals(ObservationStatus.LOCAL_ARCHIVE_FAILURE, fail.record.observationStatus)
+        assertEquals(1, fail.coverage.observedCount)
+        assertTrue(fail.coverage.hasNonObservedAlongside)
+    }
+
+    @Test
+    fun manifestInvariantsRejectInvalidRows() {
+        val t0 = Instant.parse("2026-09-15T03:00:00Z")
+        val t1 = Instant.parse("2026-09-15T03:00:01Z")
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            ManifestRecord(
+                archiveId = "a",
+                domain = "SECURITY_MASTER",
+                source = "openfigi.v3.mapping",
+                requestKey = "k",
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = t1,
+                ingestedAt = t1,
+                rawPayloadHash = null,
+                rawPayloadUri = "x",
+                httpStatus = 200,
+                transportStatus = TransportStatus.HTTP_RESPONSE,
+                observationStatus = ObservationStatus.OBSERVED,
+                eligibilityBoundaryAt = t1,
+            )
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            ManifestRecord(
+                archiveId = "a",
+                domain = "SECURITY_MASTER",
+                source = "openfigi.v3.mapping",
+                requestKey = "k",
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = t1,
+                ingestedAt = t1,
+                rawPayloadHash = "abc",
+                rawPayloadUri = "x",
+                httpStatus = 200,
+                transportStatus = TransportStatus.HTTP_RESPONSE,
+                observationStatus = ObservationStatus.OBSERVED,
+                eligibilityBoundaryAt = null,
+            )
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            ManifestRecord(
+                archiveId = "a",
+                domain = "SECURITY_MASTER",
+                source = "openfigi.v3.mapping",
+                requestKey = "k",
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = t1,
+                ingestedAt = t1,
+                transportStatus = TransportStatus.TRANSPORT_FAILURE,
+                observationStatus = ObservationStatus.MISSING,
+            )
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            ManifestRecord(
+                archiveId = "a",
+                domain = "SECURITY_MASTER",
+                source = "openfigi.v3.mapping",
+                requestKey = "k",
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = null,
+                ingestedAt = t1,
+                rawPayloadUri = "x",
+                transportStatus = TransportStatus.TRANSPORT_FAILURE,
+                observationStatus = ObservationStatus.PROVIDER_FAILURE,
+            )
+        }
+        // fromJsonLine Fail-Closed
+        val badLine =
+            """{"archiveId":"a","domain":"SECURITY_MASTER","source":"openfigi.v3.mapping","requestKey":"k","observedFields":[],"attemptedAt":"$t0","attemptFinishedAt":"$t1","fetchedAt":"$t1","ingestedAt":"$t1","rawPayloadHash":"abc","rawPayloadUri":"u","httpStatus":200,"transportStatus":"HTTP_RESPONSE","relatedPriorObservationIds":[],"observationStatus":"OBSERVED"}"""
+        kotlin.test.assertFailsWith<archive.poc.ArchiveValidationException> {
+            ManifestRecord.fromJsonLine(badLine)
+        }
     }
 
     @Test

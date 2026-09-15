@@ -90,12 +90,17 @@ Never includes API key or secret headers.
 
 | Case | Status | fetchedAt | raw | eligibility |
 | --- | --- | --- | --- | --- |
-| HTTP 200 + valid mapping array | `OBSERVED` | yes | yes | = ingestedAt |
-| HTTP 200 + malformed/empty/wrong shape | `REJECTED_VALIDATION` | yes | yes | null |
+| HTTP 200 + valid `data` array of objects (no error/warning) | `OBSERVED` | yes | yes | = ingestedAt |
+| HTTP 200 + warning-only / error / empty or non-array `data` / non-object row / warning+data | `REJECTED_VALIDATION` | yes | yes | null |
 | HTTP 4xx/5xx + complete body | `PROVIDER_FAILURE` | yes | yes | null |
 | Transport failure | `PROVIDER_FAILURE` | null | null | null |
+| Raw write / hash verify / path collision / manifest commit failure | `LOCAL_ARCHIVE_FAILURE` | yes* | partial | null |
 
-Provider failure bodies are never decision/strategy input.
+\* Body may have been received; eligibility stays null; never counts as OBSERVED coverage.
+
+HTTP 200 alone never promotes provider-level mapping failure (`warning` / `error` / absent-or-invalid `data`) to `OBSERVED`.
+
+Provider failure and local archive failure bodies are never decision/strategy input.
 
 ---
 
@@ -109,15 +114,25 @@ No authoritative replacement, no deletion, no past eligibility rewrite.
 
 ## Coverage
 
-`coverageStartAt` / `coverageThroughAt` for `(SECURITY_MASTER, openfigi.v3.mapping)` derived from `OBSERVED.ingestedAt` only. Failures alongside do not claim continuous completeness (`hasNonObservedAlongside`).
+`coverageStartAt` / `coverageThroughAt` for `(SECURITY_MASTER, openfigi.v3.mapping)` derived from semantic `OBSERVED.ingestedAt` only.  
+`REJECTED_VALIDATION` / `PROVIDER_FAILURE` / `LOCAL_ARCHIVE_FAILURE` / `MISSING` never grant coverage.  
+Failures alongside do not claim continuous completeness (`hasNonObservedAlongside`).
+
+Manifest rows also enforce status invariants at construction / `fromJsonLine` (Fail-Closed).
 
 ---
 
 ## External identifier
 
-Only official FIGI value from response `data[].figi` with namespace `figi`.  
-Ticker-only responses leave external identifier null (never promote ticker).
+`externalIdentifier` / namespace=`figi` only when the **whole manifest record** is uniquely determined:
 
+- request job count = 1
+- response item count = 1
+- valid `data` candidate count = 1
+- non-blank `figi` count = 1
+
+Otherwise `externalIdentifier` stays null. Raw payload still keeps all candidates.  
+No first-FIGI auto-selection. No SecurityId generation. Ticker is never promoted.
 ---
 
 ## Auth / secrets
@@ -141,13 +156,16 @@ Synthetic suite `OpenFigiForwardArchivePocTest` covers:
 7. Transport failure → no fetchedAt/hash/uri  
 8. Duplicate candidate  
 9. Revision candidate without replacement  
-10. Manifest/raw failure paths not OBSERVED success  
+10. Manifest/raw failure → `LOCAL_ARCHIVE_FAILURE` (not OBSERVED / not PROVIDER_FAILURE)  
 11. Hash mismatch Fail-Closed  
-12. Ticker-only no SecurityId / no externalIdentifier promotion  
-13. No knownAt generation  
-14. Coverage OBSERVED-only  
-15. Duplicate does not move past eligibility earlier  
-16. Local server client smoke for requestKey/hash  
+12. Warning-only / error-only → not OBSERVED  
+13. `data` string/object/empty/non-object row → REJECTED_VALIDATION  
+14. 1 job / 1 candidate → figi externalIdentifier; multi-candidate / multi-job → null  
+15. No knownAt / no SecurityId generation  
+16. Coverage OBSERVED-only; REJECTED / LOCAL_ARCHIVE_FAILURE excluded  
+17. Manifest status invariants + `fromJsonLine` Fail-Closed  
+18. Duplicate does not move past eligibility earlier  
+19. Local server client smoke for requestKey/hash  
 
 Live task: `./gradlew openFigiForwardArchivePoc` (optional; ignoreExitValue=true).
 

@@ -206,4 +206,7 @@ internal sealed class ArchiveJson {
     }
 }
 
-class ArchiveValidationException(message: String) : RuntimeException(message)
+class ArchiveValidationException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
