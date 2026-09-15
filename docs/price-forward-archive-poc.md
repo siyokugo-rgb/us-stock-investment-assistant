@@ -197,6 +197,21 @@ Fixtures under `src/test/resources/archive/poc/alphavantage/` are **sanitized / 
 Env: `ALPHAVANTAGE_API_KEY` (optional), `ARCHIVE_ROOT` (optional), `AV_SYMBOL` (optional).  
 Live OBSERVED is **not** required. demo/keyless Information envelopes classifying as REJECTED_VALIDATION with raw possession is acceptable evidence of archive behavior.
 
+### Live smoke recorded (2026-09-15, this PoC branch)
+
+| Item | Value |
+| --- | --- |
+| `ALPHAVANTAGE_API_KEY` | absent |
+| Symbol | IBM (demo) |
+| HTTP | 200 |
+| Status | `REJECTED_VALIDATION` |
+| Notes | provider Information envelope; OBSERVED forbidden |
+| `rawPayloadHash` | `e8ddc218d89ff77ad7e395782b4c4d28d10d328ae90c3ba597a8e7d3689b9585` |
+| eligibility | null |
+| coverage | observedCount=0 |
+| Classification | `LIVE_PROVIDER_ENVELOPE_OR_VALIDATION_REJECTED` |
+| Raw commit | **No** (`archive-runtime/` gitignored) |
+
 ---
 
 ## Build / Android
