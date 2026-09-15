@@ -1,6 +1,5 @@
 package archive.poc.alphavantage
 
-import archive.poc.Sha256Hex
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -58,27 +57,30 @@ class AlphaVantageDailyArchiveClient(
 
     fun executeDaily(symbol: String): AlphaVantageHttpPossession {
         require(symbol.isNotBlank()) { "symbol must not be blank" }
+        // Secret-free identity is fixed before any secret-bearing request construction.
         val requestKey = requestKeyFor(symbol)
         val attemptedAt = clock()
-        val key = apiKey ?: DEMO_API_KEY
-        val encodedSymbol = URLEncoder.encode(symbol.trim(), StandardCharsets.UTF_8)
-        val encodedKey = URLEncoder.encode(key, StandardCharsets.UTF_8)
-        val endpoint =
-            "${baseUrl.trimEnd('/')}$QUERY_PATH" +
-                "?function=$FUNCTION" +
-                "&symbol=$encodedSymbol" +
-                "&outputsize=$outputSize" +
-                "&datatype=json" +
-                "&apikey=$encodedKey"
-        val request =
-            HttpRequest.newBuilder()
-                .uri(URI.create(endpoint))
-                .timeout(requestTimeout)
-                .header("Accept", "application/json")
-                .GET()
-                .build()
 
+        // Endpoint / URI / HttpRequest build / send all share one sanitized failure boundary.
+        // Catch never rethrows and never stores e.message (may embed request URI + apikey).
         return try {
+            val key = apiKey ?: DEMO_API_KEY
+            val encodedSymbol = URLEncoder.encode(symbol.trim(), StandardCharsets.UTF_8)
+            val encodedKey = URLEncoder.encode(key, StandardCharsets.UTF_8)
+            val endpoint =
+                "${baseUrl.trimEnd('/')}$QUERY_PATH" +
+                    "?function=$FUNCTION" +
+                    "&symbol=$encodedSymbol" +
+                    "&outputsize=$outputSize" +
+                    "&datatype=json" +
+                    "&apikey=$encodedKey"
+            val request =
+                HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .timeout(requestTimeout)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build()
             val response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray())
             val attemptFinishedAt = clock()
             val body = response.body() ?: ByteArray(0)

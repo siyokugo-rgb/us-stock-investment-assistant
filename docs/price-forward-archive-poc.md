@@ -83,6 +83,7 @@ Default client outputSize is `compact`. Changing client to `full` changes reques
 
 - API key never enters requestKey / notes / transportFailureMessage / fixtures / raw paths / manifest
 - `transportFailureMessage` is exception **class simple name only** (never URI / `e.message`)
+- request construction (`endpoint` / `URI.create` / `HttpRequest.build` / `send`) shares the same sanitized catch boundary as transport send failures
 - provider symbol is request identity only — **not** `externalIdentifier` / SecurityId
 - compact and full are distinct requestKeys (duplicate/revision grouping follows possession provenance)
 

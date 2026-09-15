@@ -589,6 +589,60 @@ class AlphaVantageDailyForwardArchivePocTest {
     }
 
     @Test
+    fun requestConstructionFailureDoesNotLeakApiKey() {
+        val secret = "AV_SECRET_URI_LEAK_SHOULD_NEVER_APPEAR_XYZ"
+        // Space in host makes URI.create fail; IllegalArgumentException message typically embeds full URI incl. apikey.
+        val client =
+            AlphaVantageDailyArchiveClient(
+                baseUrl = "http://bad host",
+                outputSize = "compact",
+                apiKey = secret,
+                clock = { nextInstant() },
+            )
+        val possession =
+            try {
+                client.executeDaily(symbol)
+            } catch (e: Exception) {
+                throw AssertionError(
+                    "executeDaily must not throw secret-bearing construction failures; got ${e::class.java.name}: ${e.message}",
+                    e,
+                )
+            }
+        assertEquals(client.requestKeyFor(symbol), possession.requestKey)
+        assertTrue(possession.requestKey.contains("outputsize=compact"))
+        assertFalse(possession.requestKey.contains(secret))
+        assertFalse(possession.requestKey.contains("apikey", ignoreCase = true))
+        assertNull(possession.fetchedAt)
+        assertNull(possession.httpStatus)
+        assertNull(possession.bodyBytes)
+        assertNotNull(possession.transportFailureMessage)
+        assertFalse(possession.transportFailureMessage!!.contains(secret))
+        assertFalse(possession.transportFailureMessage!!.contains("apikey", ignoreCase = true))
+        assertFalse(possession.transportFailureMessage!!.contains("http://", ignoreCase = true))
+        assertFalse(possession.transportFailureMessage!!.contains(":"))
+        assertFalse(possession.transportFailureMessage!!.contains(" "))
+
+        val svc =
+            AlphaVantageDailyForwardArchiveService(
+                archiveRoot = root,
+                client = client,
+                clock = { nextInstant() },
+                idGenerator = { "id-${ids.incrementAndGet()}" },
+            )
+        val result = svc.archivePossessedResponse(symbol, possession)
+        assertEquals(ObservationStatus.PROVIDER_FAILURE, result.record.observationStatus)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertFalse(result.observedIngestSucceeded)
+        assertEquals(possession.requestKey, result.record.requestKey)
+        assertEquals(possession.transportFailureMessage, result.record.notes)
+        val line = result.record.toJsonLine()
+        assertFalse(line.contains(secret))
+        assertFalse(line.contains("apikey", ignoreCase = true))
+        assertFalse(line.contains("http://bad", ignoreCase = true))
+        assertEquals(0, result.coverage.observedCount)
+    }
+
+    @Test
     fun compactClientPossessionCarriesCompactRequestKey() {
         val client =
             AlphaVantageDailyArchiveClient(
