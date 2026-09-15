@@ -88,3 +88,13 @@ tasks.register<JavaExec>("openFigiForwardArchivePoc") {
     mainClass.set("archive.poc.openfigi.OpenFigiLiveArchivePocKt")
     isIgnoreExitValue = true
 }
+
+// Live Alpha Vantage TIME_SERIES_DAILY forward archive PoC. Optional ALPHAVANTAGE_API_KEY. No mock fallback.
+tasks.register<JavaExec>("alphaVantageDailyForwardArchivePoc") {
+    group = "verification"
+    description =
+        "Run live Alpha Vantage TIME_SERIES_DAILY forward self-archive PoC (Fail-Closed; no SecurityId/knownAt/currency/DailyPrice)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("archive.poc.alphavantage.AlphaVantageDailyLiveArchivePocKt")
+    isIgnoreExitValue = true
+}
