@@ -34,7 +34,11 @@ class ImmutableRawStore(
         if (!dir.startsWith(archiveRoot.normalize())) {
             throw ArchiveIoException("Refusing path escape: $dir")
         }
-        Files.createDirectories(dir)
+        try {
+            Files.createDirectories(dir)
+        } catch (e: Exception) {
+            throw ArchiveIoException("Raw directory create failed for $relativeDir: ${e.message}", e)
+        }
 
         val finalPath = dir.resolve(fileName)
         if (Files.exists(finalPath)) {

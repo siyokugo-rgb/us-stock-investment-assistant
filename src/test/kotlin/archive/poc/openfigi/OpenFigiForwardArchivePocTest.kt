@@ -820,10 +820,11 @@ class OpenFigiForwardArchivePocTest {
     @Test
     fun requestWriteFailureForbidsBindingReadyEvenIfResponseWouldSucceed() {
         val requestBytes = OpenFigiMappingRequestBody.encode(ibmJob)
-        val blocked =
+        val sourceDir =
             root.resolve(OpenFigiMappingClient.DOMAIN).resolve(OpenFigiMappingClient.SOURCE)
-        Files.createDirectories(blocked.parent)
-        Files.writeString(blocked, "not-a-directory")
+        Files.createDirectories(sourceDir)
+        // Occupy the request directory path with a file so immutable request write Fail-Closes.
+        Files.writeString(sourceDir.resolve("request"), "not-a-directory")
         val svc =
             OpenFigiForwardArchiveService(
                 archiveRoot = root,
