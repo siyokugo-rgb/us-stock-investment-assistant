@@ -68,6 +68,24 @@ class ImmutableRawStore(
         }
         return finalPath
     }
+
+    /**
+     * Lists final `*.raw` objects under [relativeDir] (non-recursive).
+     * Temp (`*.raw.tmp`) files are ignored. Audit-only — never deletes.
+     */
+    fun listRawObjects(relativeDir: String): List<Path> {
+        val dir = archiveRoot.resolve(relativeDir).normalize()
+        if (!dir.startsWith(archiveRoot.normalize())) {
+            throw ArchiveIoException("Refusing path escape: $dir")
+        }
+        if (!Files.exists(dir) || !Files.isDirectory(dir)) return emptyList()
+        return Files.list(dir).use { stream ->
+            stream
+                .filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".raw") }
+                .sorted()
+                .toList()
+        }
+    }
 }
 
 class ArchiveIoException(

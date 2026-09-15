@@ -45,6 +45,9 @@ data class ManifestRecord(
         require(!ingestedAt.isBefore(attemptFinishedAt)) {
             "ingestedAt before attemptFinishedAt"
         }
+        require((externalIdentifier == null) == (externalIdentifierNamespace == null)) {
+            "externalIdentifier and externalIdentifierNamespace must both be null or both non-null"
+        }
         validateStatusInvariants()
     }
 

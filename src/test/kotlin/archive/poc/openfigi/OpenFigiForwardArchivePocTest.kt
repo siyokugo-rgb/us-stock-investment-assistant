@@ -610,4 +610,137 @@ class OpenFigiForwardArchivePocTest {
             server.stop(0)
         }
     }
+
+    @Test
+    fun referencedRawIsNotOrphan() {
+        val svc = service()
+        val result = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertTrue(result.observedIngestSucceeded)
+        assertTrue(svc.findOrphanRawObjects().isEmpty())
+    }
+
+    @Test
+    fun unreferencedRawIsDetectedAsOrphan() {
+        val svc = service()
+        val ok = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertTrue(ok.observedIngestSucceeded)
+        val rawDir =
+            root.resolve(OpenFigiMappingClient.DOMAIN).resolve(OpenFigiMappingClient.SOURCE).resolve("raw")
+        Files.createDirectories(rawDir)
+        val orphanPath = rawDir.resolve("manual-orphan.raw")
+        Files.writeString(orphanPath, "orphan-bytes")
+        val orphans = svc.findOrphanRawObjects()
+        assertEquals(1, orphans.size)
+        assertEquals(orphanPath.toAbsolutePath().normalize(), orphans.single())
+    }
+
+    @Test
+    fun rawLeftAfterManifestAppendFailureIsDetectableNextTime() {
+        val svc = service()
+        // Establish layout with one committed OBSERVED row.
+        assertTrue(svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf())).observedIngestSucceeded)
+        // Simulate residue of: raw final move succeeded, manifest append failed
+        // (raw on disk, no matching rawPayloadUri in manifest).
+        val residualBody = validBody.copyOf()
+        val residualHash = Sha256Hex.of(residualBody)
+        val residualPath =
+            archive.poc.ImmutableRawStore(root).writeImmutable(
+                relativeDir = "${OpenFigiMappingClient.DOMAIN}/${OpenFigiMappingClient.SOURCE}/raw",
+                archiveId = "orphan-after-append-fail",
+                payload = residualBody,
+                expectedSha256Hex = residualHash,
+            )
+        val detectSvc = service()
+        val orphans = detectSvc.findOrphanRawObjects()
+        assertTrue(
+            orphans.any { it == residualPath.toAbsolutePath().normalize() },
+            "orphans=$orphans residual=$residualPath",
+        )
+        // Prior OBSERVED coverage remains; orphan itself grants none.
+        assertEquals(1, detectSvc.currentCoverage().observedCount)
+        assertFalse(orphans.isEmpty())
+    }
+
+    @Test
+    fun orphanRawDoesNotEnterCoverage() {
+        val svc = service()
+        val rawDir =
+            root.resolve(OpenFigiMappingClient.DOMAIN).resolve(OpenFigiMappingClient.SOURCE).resolve("raw")
+        Files.createDirectories(rawDir)
+        Files.writeString(rawDir.resolve("coverage-orphan.raw"), "x")
+        assertEquals(1, svc.findOrphanRawObjects().size)
+        assertEquals(0, svc.currentCoverage().observedCount)
+        assertNull(svc.currentCoverage().coverageStartAt)
+    }
+
+    @Test
+    fun malformedUtf8InJsonStringIsRejectedValidationWithRawPreserved() {
+        val prefix = """[{"data":[{"figi":"BBG000BLNNH6","name":"""".toByteArray(StandardCharsets.UTF_8)
+        val suffix = """"}]}]""".toByteArray(StandardCharsets.UTF_8)
+        val body = prefix + byteArrayOf(0xFF.toByte()) + suffix
+        val result = service().archivePossessedResponse(ibmJob, possession(200, body))
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertFalse(result.observedIngestSucceeded)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertNotNull(result.record.fetchedAt)
+        assertEquals(Sha256Hex.of(body), result.record.rawPayloadHash)
+        assertNotNull(result.record.rawPayloadUri)
+        val onDisk = Files.readAllBytes(Path.of(result.record.rawPayloadUri!!))
+        assertTrue(onDisk.contentEquals(body))
+        assertEquals(Sha256Hex.of(body), Sha256Hex.of(onDisk))
+        assertTrue(onDisk.contains(0xFF.toByte()))
+    }
+
+    @Test
+    fun validUtf8JsonStillObserved() {
+        val result = service().archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
+        assertTrue(result.observedIngestSucceeded)
+    }
+
+    @Test
+    fun externalIdentifierRequiresNamespaceAndViceVersa() {
+        val t0 = Instant.parse("2026-09-15T04:00:00Z")
+        val t1 = Instant.parse("2026-09-15T04:00:01Z")
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            ManifestRecord(
+                archiveId = "a",
+                domain = "SECURITY_MASTER",
+                source = "openfigi.v3.mapping",
+                requestKey = "k",
+                externalIdentifier = "BBG000BLNNH6",
+                externalIdentifierNamespace = null,
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = t1,
+                ingestedAt = t1,
+                rawPayloadHash = "abc",
+                rawPayloadUri = "u",
+                httpStatus = 200,
+                transportStatus = TransportStatus.HTTP_RESPONSE,
+                observationStatus = ObservationStatus.OBSERVED,
+                eligibilityBoundaryAt = t1,
+            )
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            ManifestRecord(
+                archiveId = "b",
+                domain = "SECURITY_MASTER",
+                source = "openfigi.v3.mapping",
+                requestKey = "k",
+                externalIdentifier = null,
+                externalIdentifierNamespace = "figi",
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = t1,
+                ingestedAt = t1,
+                rawPayloadHash = "abc",
+                rawPayloadUri = "u",
+                httpStatus = 200,
+                transportStatus = TransportStatus.HTTP_RESPONSE,
+                observationStatus = ObservationStatus.OBSERVED,
+                eligibilityBoundaryAt = t1,
+            )
+        }
+    }
 }

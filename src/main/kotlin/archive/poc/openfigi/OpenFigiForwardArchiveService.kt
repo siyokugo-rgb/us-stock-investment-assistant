@@ -29,7 +29,7 @@ data class OpenFigiArchiveResult(
  * decision use of PROVIDER_FAILURE / LOCAL_ARCHIVE_FAILURE bodies.
  */
 class OpenFigiForwardArchiveService(
-    archiveRoot: Path,
+    private val archiveRoot: Path,
     private val client: OpenFigiMappingClient,
     private val clock: () -> Instant = { Instant.now() },
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
@@ -267,4 +267,24 @@ class OpenFigiForwardArchiveService(
         )
 
     fun readManifest(): List<ManifestRecord> = manifestStore.readAll()
+
+    /**
+     * Audit-only: raw `*.raw` files under this domain/source that are not referenced by any
+     * manifest `rawPayloadUri`. Never deletes, never promotes to OBSERVED, never invents eligibility.
+     */
+    fun findOrphanRawObjects(): List<Path> {
+        val rawFiles = rawStore.listRawObjects(rawRelativeDir)
+        val referenced =
+            manifestStore
+                .readAll()
+                .mapNotNull { it.rawPayloadUri }
+                .map { Path.of(it).normalize().toAbsolutePath() }
+                .toSet()
+        return rawFiles
+            .map { it.toAbsolutePath().normalize() }
+            .filter { it !in referenced }
+            .sorted()
+    }
+
 }
+

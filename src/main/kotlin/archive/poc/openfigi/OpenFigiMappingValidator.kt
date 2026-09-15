@@ -2,6 +2,8 @@ package archive.poc.openfigi
 
 import archive.poc.ArchiveJson
 import archive.poc.ArchiveValidationException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 
 data class OpenFigiValidationOutcome(
@@ -33,9 +35,9 @@ object OpenFigiMappingValidator {
         }
         val text =
             try {
-                String(bodyBytes, StandardCharsets.UTF_8)
+                decodeUtf8Strict(bodyBytes)
             } catch (_: Exception) {
-                return reject("body is not UTF-8")
+                return reject("body is not valid UTF-8")
             }
         val root =
             try {
@@ -146,6 +148,16 @@ object OpenFigiMappingValidator {
                     null
                 },
         )
+    }
+
+
+    private fun decodeUtf8Strict(bytes: ByteArray): String {
+        val decoder =
+            StandardCharsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+        return decoder.decode(ByteBuffer.wrap(bytes)).toString()
     }
 
     private fun reject(notes: String) =
