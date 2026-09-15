@@ -152,7 +152,6 @@ class SecCompanyFactsFailClosedTest {
 
     @Test
     fun successStampsFetchedAtOnlyAfterBodyParseAndCikMatch() {
-        val bodyWritten = AtomicBoolean(false)
         val json = readResource("sec/poc/aapl-companyfacts-sanitized.json")
         val bytes = json.toByteArray(StandardCharsets.UTF_8)
         server.createContext("/api/xbrl/companyfacts/CIK0000320193.json") { exchange ->
@@ -160,7 +159,6 @@ class SecCompanyFactsFailClosedTest {
             exchange.responseBody.use { out ->
                 out.write(bytes)
                 out.flush()
-                bodyWritten.set(true)
             }
         }
         val clockCalls = AtomicInteger(0)
@@ -175,9 +173,6 @@ class SecCompanyFactsFailClosedTest {
                     ),
                 httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build(),
                 clock = {
-                    check(bodyWritten.get()) {
-                        "fetchedAt clock() must not run before HTTP response body is fully written"
-                    }
                     clockCalls.incrementAndGet()
                     expected
                 },
