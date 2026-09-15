@@ -58,7 +58,7 @@
 | 用語 | 意味 | 本設計での扱い |
 | --- | --- | --- |
 | **provider historical `knownAt`** | その版を根拠付きで決定に使えた時刻（provider / 一次公表） | self-archive では **生成しない**。無いなら retrospective PASS 不可 |
-| **`fetchedAt`** | provider から **response body を完全受信した時刻**（成功 possession の開始証拠） | possession evidence。不完全受信・transport failure・MISSING では **null** |
+| **`fetchedAt`** | provider から **response body を完全受信した時刻**（HTTP 成否とは独立） | possession evidence。body 未完・transport failure・MISSING は **null**。HTTP 4xx/5xx でも body 完全受信なら **非 null** |
 | **`attemptedAt` / `attemptFinishedAt`** | 取得試行の開始／終了時刻（失敗・欠測含む） | `fetchedAt` とは別概念。試行ログ用 |
 | **`ingestedAt`** | raw 保存・必須検証・ハッシュ確定（または欠測/失敗確定）が完了した時刻 | possession / 運用確定の証拠（保有PIT）。historical `knownAt` ではない |
 | **`rawPayloadHash`** | provider から完全受信した **元 response body bytes** の SHA-256 | 圧縮後オブジェクトの hash ではない |
@@ -134,17 +134,21 @@ Data Contract の「`ingestedAt` は知識PIT条件に含めない」と整合�
 
 ### 4.1 status 別 nullable（確定）
 
-| フィールド | `OBSERVED` | `REJECTED_VALIDATION` | `MISSING` | `PROVIDER_FAILURE`（transport 含む） |
-| --- | --- | --- | --- | --- |
-| `attemptedAt` / `attemptFinishedAt` | **required** | **required** | **required** | **required** |
-| `fetchedAt` | **required**（body 完全受信） | **required**（body 完全受信後に検証失敗） | **null** | **null**（body 未完全受信） |
-| `ingestedAt` | **required**（検証・hash・保存完了） | **required**（検証終了） | **required**（欠損確定） | **required**（失敗確定） |
-| `rawPayloadHash` | **required**（元 body bytes） | **required**（元 body bytes） | **null** | **null** |
-| `storageObjectHash` | optional | optional | **null** | **null** |
-| `rawPayloadUri` | **required** | **required** | **null** | **null** |
-| `eligibilityBoundaryAt` | **required** | **null**（決定根拠に使わない） | **null** | **null** |
-| `revisionCandidateOf` / `relatedPriorObservationIds` | optional | optional | **null** | **null** |
-| `duplicateOf` | optional | optional | **null** | **null** |
+`PROVIDER_FAILURE` は **HTTP 成否** と **body 完全受信** を別軸で扱う（詳細 §11.2）。
+
+| フィールド | `OBSERVED` | `REJECTED_VALIDATION` | `MISSING` | `PROVIDER_FAILURE` transport / body 未完 | `PROVIDER_FAILURE` HTTP error + body 完 |
+| --- | --- | --- | --- | --- | --- |
+| `attemptedAt` / `attemptFinishedAt` | **required** | **required** | **required** | **required** | **required** |
+| `fetchedAt` | **required**（body 完全受信） | **required**（body 完全受信後に検証失敗） | **null** | **null** | **required** |
+| `ingestedAt` | **required**（検証・hash・保存完了） | **required**（検証終了） | **required**（欠損確定） | **required**（失敗確定） | **required**（error body 保存・確定） |
+| `rawPayloadHash` | **required**（元 body bytes） | **required**（元 body bytes） | **null** | **null** | **required**（error body bytes） |
+| `storageObjectHash` | optional | optional | **null** | **null** | optional |
+| `rawPayloadUri` | **required** | **required** | **null** | **null** | **required** |
+| `eligibilityBoundaryAt` | **required** | **null**（決定根拠に使わない） | **null** | **null** | **null**（decision input 禁止） |
+| `revisionCandidateOf` / `relatedPriorObservationIds` | optional | optional | **null** | **null** | **null** |
+| `duplicateOf` | optional | optional | **null** | **null** | optional |
+
+**重要:** HTTP 401/403/429/5xx だからといって自動的に `fetchedAt=null` にはしない。判定軸は **body を完全受信したか**。
 
 共通制約（値が非 null のとき）:
 
@@ -161,6 +165,7 @@ Data Contract の「`ingestedAt` は知識PIT条件に含めない」と整合�
 
 - `knownAt` を self-archive 成功時に自動セットしない  
 - `revisionCandidateOf` を authoritative replacement / latest-wins として扱わない  
+- `PROVIDER_FAILURE` の raw（error body 含む）を Strategy / decision input に使わない  
 - provider が publication timestamp を明示し、かつ別監査で CONFIRMED と判定できる場合のみ、**別フィールド**として記録候補にする（本設計のデフォルト対象外）
 
 ---
@@ -169,10 +174,12 @@ Data Contract の「`ingestedAt` は知識PIT条件に含めない」と整合�
 
 ### 5.1 `fetchedAt`
 
-- **定義:** provider から response body を **完全受信した時刻**のみ非 null  
-- `OBSERVED` / `REJECTED_VALIDATION`: body 完全受信後にセット（後者が検証失敗でも、受信自体は完了している）  
-- `MISSING` / transport 失敗を含む `PROVIDER_FAILURE`: **必ず null**  
-- 失敗・試行の時刻は `attemptedAt` / `attemptFinishedAt` に記録し、`fetchedAt` に入れない  
+- **定義（固定）:** provider response body を **完全受信した時刻**。HTTP ステータスの成功/失敗とは独立  
+- `OBSERVED` / `REJECTED_VALIDATION`: body 完全受信後にセット（後者は検証失敗でも受信完了なら非 null）  
+- `PROVIDER_FAILURE` + body 完全受信（例: 401/403/429/5xx で error body あり）: **required**  
+- `PROVIDER_FAILURE` + transport / body 未完（例: DNS・接続失敗・timeout 未完・reset・incomplete body）: **null**  
+- `MISSING`: **null**  
+- 試行時刻は `attemptedAt` / `attemptFinishedAt` に記録し、`fetchedAt` に入れない  
 - `fetchedAt ≠ historical knownAt`（維持）  
 - timezone: **常に UTC Instant** で保存。表示変換は後段  
 
@@ -189,7 +196,9 @@ Data Contract の「`ingestedAt` は知識PIT条件に含めない」と整合�
   2. `rawPayloadHash`（元 body bytes）再計算一致  
   3. 最小スキーマ検証（JSON parse 可、必須 envelope 等）  
 - `REJECTED_VALIDATION`: parse/検証失敗でも raw は残し、検証終了時刻を `ingestedAt` とする  
-- `MISSING` / `PROVIDER_FAILURE`: 欠損または失敗レコードを manifest に確定した時刻  
+- `MISSING`: 欠損レコードを manifest に確定した時刻  
+- `PROVIDER_FAILURE`（transport / body 未完）: 失敗レコード確定時刻（raw 無し）  
+- `PROVIDER_FAILURE`（HTTP error + body 完）: error body の immutable 保存・`rawPayloadHash` 確定・失敗レコード確定時刻。**Strategy/decision input には使わない**  
 
 ### 5.4 clock / timezone
 
@@ -328,16 +337,57 @@ vendor を増やしすぎない。既存 PoC / feasibility で触れた候補に
 
 欠損を「前日値の継続」で埋めない。
 
-### 11.2 provider failure
+### 11.2 provider failure（transport vs HTTP error + complete body）
+
+HTTP 成功/失敗と、body 完全受信/未受信は **別軸**。`observationStatus=PROVIDER_FAILURE` でも body 完了なら raw を保存する。
+
+#### A. transport failure（body 未完）
+
+例: DNS failure、connection failure、timeout で body 未完、connection reset、incomplete body。
+
+| フィールド | 値 |
+| --- | --- |
+| `observationStatus` | `PROVIDER_FAILURE` |
+| `fetchedAt` | **null** |
+| `rawPayloadHash` | **null** |
+| `rawPayloadUri` | **null** |
+| `eligibilityBoundaryAt` | **null** |
+| `attemptedAt` / `attemptFinishedAt` | **required** |
+| `ingestedAt` | **required**（失敗確定時刻） |
+
+#### B. HTTP failure with complete body
+
+例: 401 / 403 / 429 / 5xx で **response body を完全受信**できた場合。
+
+| フィールド | 値 |
+| --- | --- |
+| `observationStatus` | `PROVIDER_FAILURE` |
+| `fetchedAt` | **required** |
+| `rawPayloadHash` | **required**（error body bytes の SHA-256） |
+| `rawPayloadUri` | **required** |
+| `ingestedAt` | **required** |
+| `eligibilityBoundaryAt` | **null** |
+| `attemptedAt` / `attemptFinishedAt` | **required** |
+
+- raw error body は immutable 保存する  
+- **Strategy / decision input には絶対に使わない**（監査・診断・リトライ判断用）  
+- HTTP 4xx/5xx だから自動で `fetchedAt=null` にはしない  
+
+#### 関連（非 PROVIDER_FAILURE）
 
 | 例 | `observationStatus` | `fetchedAt` |
 | --- | --- | --- |
-| 5xx / timeout / DNS / 接続失敗（body 未完全受信） | `PROVIDER_FAILURE` | **null** |
-| 401/403 entitlement | `PROVIDER_FAILURE` | **null**（body 未受信の典型） |
-| 429 rate limit | `PROVIDER_FAILURE` | **null**（リトライ方針は運用） |
-| body 完全受信したがスキーマ崩壊 | `REJECTED_VALIDATION` | **required**（raw は保存、`rawPayloadHash` required） |
+| HTTP 2xx 相当で body 完全受信したがスキーマ崩壊 | `REJECTED_VALIDATION` | **required**（raw 保存、`rawPayloadHash` required）。`eligibilityBoundaryAt=null` |
 
-failure レコードも append-only で残す。成功に見せかけて補完しない。試行時刻は `attemptedAt` / `attemptFinishedAt` に残す。
+#### QA（一意に読む）
+
+| ケース | `fetchedAt` | raw 保存 | `eligibilityBoundaryAt` | decision input |
+| --- | --- | --- | --- | --- |
+| timeout 未完 | **null** | なし | **null** | 使わない |
+| HTTP 500 + body 完全受信 | **あり** | **する** | **null** | **使わない** |
+| HTTP 403 + body 完全受信 | **あり** | **する** | **null** | **使わない** |
+
+failure レコードも append-only で残す。成功に見せかけて補完しない。
 
 ---
 
