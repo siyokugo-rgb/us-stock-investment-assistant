@@ -18,8 +18,14 @@ class ImmutableRawStore(
         archiveId: String,
         payload: ByteArray,
         expectedSha256Hex: String,
+        /** Final object file name under [relativeDir]. Default response raw. */
+        fileName: String = "$archiveId.raw",
     ): Path {
         require(archiveId.isNotBlank())
+        require(fileName.isNotBlank()) { "fileName blank" }
+        require(!fileName.contains('/') && !fileName.contains('\\')) {
+            "fileName must not contain path separators"
+        }
         require(expectedSha256Hex == Sha256Hex.of(payload)) {
             "Hash mismatch before write: expected=$expectedSha256Hex actual=${Sha256Hex.of(payload)}"
         }
@@ -28,14 +34,18 @@ class ImmutableRawStore(
         if (!dir.startsWith(archiveRoot.normalize())) {
             throw ArchiveIoException("Refusing path escape: $dir")
         }
-        Files.createDirectories(dir)
+        try {
+            Files.createDirectories(dir)
+        } catch (e: Exception) {
+            throw ArchiveIoException("Raw directory create failed for $relativeDir: ${e.message}", e)
+        }
 
-        val finalPath = dir.resolve("$archiveId.raw")
+        val finalPath = dir.resolve(fileName)
         if (Files.exists(finalPath)) {
             throw ArchiveIoException("Raw path collision: $finalPath")
         }
 
-        val tmp = dir.resolve("$archiveId.raw.tmp")
+        val tmp = dir.resolve("$fileName.tmp")
         try {
             Files.write(
                 tmp,
