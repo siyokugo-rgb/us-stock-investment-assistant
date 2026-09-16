@@ -632,7 +632,9 @@ class MassiveDailyAggsForwardArchivePocTest {
         assertEquals(first.record.archiveId, second.record.duplicateOf)
         val alt = mutateValid { it.replace("185.64", "185.65") }
         val third = archive(svc = svc, body = alt)
-        assertEquals(first.record.archiveId, third.record.revisionCandidateOf)
+        // revisionCandidateOf = last prior with different hash (existing contract).
+        assertEquals(second.record.archiveId, third.record.revisionCandidateOf)
+        assertNull(third.record.duplicateOf)
         // Paginated incomplete response stays outside OBSERVED coverage.
         val paged =
             mutateValid {
@@ -643,7 +645,8 @@ class MassiveDailyAggsForwardArchivePocTest {
             }
         val rejected = archive(svc = svc, body = paged)
         assertEquals(ObservationStatus.REJECTED_VALIDATION, rejected.record.observationStatus)
-        assertEquals(2, svc.currentCoverage().observedCount)
+        // first + duplicate OBSERVED + revision OBSERVED; rejected excluded
+        assertEquals(3, svc.currentCoverage().observedCount)
     }
 
     @Test
