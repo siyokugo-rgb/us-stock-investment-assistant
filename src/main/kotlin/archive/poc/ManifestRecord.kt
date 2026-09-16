@@ -19,6 +19,10 @@ data class ManifestRecord(
     val rawPayloadHash: String? = null,
     val storageObjectHash: String? = null,
     val rawPayloadUri: String? = null,
+    /** Exact HTTP request body SHA-256 (lowercase hex). Optional; OpenFIGI uses for binding provenance. */
+    val requestPayloadHash: String? = null,
+    /** Immutable URI of secret-free request body object. Paired with [requestPayloadHash]. */
+    val requestPayloadUri: String? = null,
     val contentType: String? = null,
     val httpStatus: Int? = null,
     val transportStatus: TransportStatus,
@@ -48,7 +52,53 @@ data class ManifestRecord(
         require((externalIdentifier == null) == (externalIdentifierNamespace == null)) {
             "externalIdentifier and externalIdentifierNamespace must both be null or both non-null"
         }
+        require((requestPayloadHash == null) == (requestPayloadUri == null)) {
+            "requestPayloadHash and requestPayloadUri must both be null or both non-null"
+        }
+        if (requestPayloadHash != null) {
+            require(requestPayloadHash.isNotBlank()) { "requestPayloadHash blank" }
+            require(!requestPayloadUri.isNullOrBlank()) { "requestPayloadUri blank" }
+        }
+        validateOpenFigiRequestKeyHashInvariant()
         validateStatusInvariants()
+    }
+
+    private fun isOpenFigi(): Boolean =
+        domain == "SECURITY_MASTER" && source == "openfigi.v3.mapping"
+
+    /**
+     * OpenFIGI-only: when requestPayloadHash is present, it must be `^[0-9a-f]{64}$` and
+     * requestKey must be `POST|/v3/mapping|sha256:{requestPayloadHash}` (exact hash match).
+     * Enforced on construction and [fromJsonLine] reload. Other domains unaffected.
+     */
+    private fun validateOpenFigiRequestKeyHashInvariant() {
+        if (!isOpenFigi()) return
+        if (requestPayloadHash == null) return
+        require(OPENFIGI_REQUEST_PAYLOAD_HASH_REGEX.matches(requestPayloadHash)) {
+            "OpenFIGI requestPayloadHash must be 64-char lowercase hex SHA-256"
+        }
+        val prefix = "POST|/v3/mapping|sha256:"
+        require(requestKey.startsWith(prefix)) {
+            "OpenFIGI requestKey must start with $prefix"
+        }
+        val keyHash = requestKey.removePrefix(prefix)
+        require(OPENFIGI_REQUEST_PAYLOAD_HASH_REGEX.matches(keyHash)) {
+            "OpenFIGI requestKey body hash must be 64-char lowercase hex SHA-256"
+        }
+        require(keyHash == requestPayloadHash) {
+            "OpenFIGI requestKey body hash mismatch vs requestPayloadHash"
+        }
+    }
+
+    /** OpenFIGI-only: request body provenance required for durable mapping statuses. */
+    private fun requireOpenFigiRequestProvenance(statusLabel: String) {
+        if (!isOpenFigi()) return
+        require(!requestPayloadHash.isNullOrBlank()) {
+            "$statusLabel OpenFIGI requires requestPayloadHash"
+        }
+        require(!requestPayloadUri.isNullOrBlank()) {
+            "$statusLabel OpenFIGI requires requestPayloadUri"
+        }
     }
 
     private fun validateStatusInvariants() {
@@ -64,6 +114,7 @@ data class ManifestRecord(
                 require(transportStatus == TransportStatus.HTTP_RESPONSE) {
                     "OBSERVED requires HTTP_RESPONSE transportStatus"
                 }
+                requireOpenFigiRequestProvenance("OBSERVED")
             }
             ObservationStatus.REJECTED_VALIDATION -> {
                 require(fetchedAt != null) { "REJECTED_VALIDATION requires fetchedAt" }
@@ -76,6 +127,7 @@ data class ManifestRecord(
                 require(eligibilityBoundaryAt == null) {
                     "REJECTED_VALIDATION requires eligibilityBoundaryAt=null"
                 }
+                requireOpenFigiRequestProvenance("REJECTED_VALIDATION")
             }
             ObservationStatus.PROVIDER_FAILURE -> {
                 require(eligibilityBoundaryAt == null) {
@@ -92,6 +144,8 @@ data class ManifestRecord(
                         require(rawPayloadUri == null) {
                             "transport PROVIDER_FAILURE requires rawPayloadUri=null"
                         }
+                        // OpenFIGI writes secret-free request raw before the response path.
+                        requireOpenFigiRequestProvenance("PROVIDER_FAILURE/TRANSPORT_FAILURE")
                     }
                     TransportStatus.HTTP_RESPONSE -> {
                         require(fetchedAt != null) {
@@ -106,6 +160,7 @@ data class ManifestRecord(
                         require(httpStatus != null && httpStatus !in 200..299) {
                             "HTTP PROVIDER_FAILURE requires non-success httpStatus"
                         }
+                        requireOpenFigiRequestProvenance("PROVIDER_FAILURE/HTTP_RESPONSE")
                     }
                     TransportStatus.LOCAL_FAILURE ->
                         throw IllegalArgumentException(
@@ -182,6 +237,8 @@ data class ManifestRecord(
         put("rawPayloadHash", rawPayloadHash)
         put("storageObjectHash", storageObjectHash)
         put("rawPayloadUri", rawPayloadUri)
+        put("requestPayloadHash", requestPayloadHash)
+        put("requestPayloadUri", requestPayloadUri)
         put("contentType", contentType)
         putNum("httpStatus", httpStatus)
         put("transportStatus", transportStatus.name)
@@ -195,6 +252,8 @@ data class ManifestRecord(
     }
 
     companion object {
+        private val OPENFIGI_REQUEST_PAYLOAD_HASH_REGEX = Regex("^[0-9a-f]{64}$")
+
         fun fromJsonLine(line: String): ManifestRecord {
             val obj = ArchiveJson.parse(line).asObject("manifest")
             fun str(key: String): String? =
@@ -244,6 +303,8 @@ data class ManifestRecord(
                     rawPayloadHash = str("rawPayloadHash"),
                     storageObjectHash = str("storageObjectHash"),
                     rawPayloadUri = str("rawPayloadUri"),
+                    requestPayloadHash = str("requestPayloadHash"),
+                    requestPayloadUri = str("requestPayloadUri"),
                     contentType = str("contentType"),
                     httpStatus = intOrNull("httpStatus"),
                     transportStatus = TransportStatus.valueOf(strReq("transportStatus")),
