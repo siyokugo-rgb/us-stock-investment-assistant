@@ -155,9 +155,10 @@ Production class は **今回作らない**。文書上の最小 candidate:
 | `providerTicker` | canonical Massive ticker（request provenance only） |
 | `priceEligibilityBoundaryAt` | PRICE `eligibilityBoundaryAt` |
 | `overviewEligibilityBoundaryAt` | Overview `eligibilityBoundaryAt` |
-| `bindingEligibleAt` | `max(price, overview)` eligibility（≠ historical knownAt） |
-| `overviewRequestDate` | Overview requestKey の optional `date`（provider as-of；nullable） |
-| `currencyName?` | Overview raw `currency_name` if present（evidence only） |
+| `bindingEligibleAt` | `max(price, overview)` eligibility — **when this binding evidence became usable**（≠ knownAt） |
+| `overviewRequestDate` | Overview requestKey optional `date` = **provider reference as-of selector**（nullable；≠ eligibility） |
+| `referenceTemporalApplicability` | 概念のみ: default **`UNRESOLVED`** — reference fields を PRICE semantics へ意味適用できるかは未解決（巨大 enum 化しない） |
+| `currencyName?` | Overview raw `currency_name` if present（evidence only；自動 PRICE 適用禁止） |
 | `primaryExchange?` | Overview raw `primary_exchange` if present |
 | `compositeFigi?` | Overview raw `composite_figi` if present |
 | `shareClassFigi?` | Overview raw `share_class_figi` if present |
@@ -165,9 +166,11 @@ Production class は **今回作らない**。文書上の最小 candidate:
 | `status` | e.g. `CANDIDATE` / `CONFLICT` / `INELIGIBLE` |
 | `reason?` | Fail-Closed / conflict notes（secret-free） |
 
+実装時は **archive-level provenance relation** と **reference field temporal applicability** を別状態として保持する（次工程の制約）。
+
 ---
 
-## 7. Eligibility
+## 7. Eligibility vs reference as-of（PIT 分離）
 
 両方 OBSERVED かつ `eligibilityBoundaryAt != null` のとき:
 
@@ -175,9 +178,54 @@ Production class は **今回作らない**。文書上の最小 candidate:
 bindingEligibleAt = max(priceEligibilityBoundaryAt, overviewEligibilityBoundaryAt)
 ```
 
-- historical `knownAt` ではない
+**`bindingEligibleAt` の意味（これだけ）:**
+
+> 「この binding evidence を利用可能になった時刻」
+
+**ではないもの（必須分離）:**
+
+```text
+bindingEligibleAt
+  != overviewRequestDate          （provider reference as-of selector）
+  != historical knownAt
+  != knowledge-PIT / decision availability
+  != bar trading date / PRICE payload `t`
+  != list_date / delisted_utc / last_updated_utc
+```
+
+例:
+
+| Fact | Value |
+| --- | --- |
+| Overview `date` query | `2024-06-01` |
+| Overview `ingestedAt` | `2026-09-16…` |
+| PRICE `ingestedAt` | `2026-09-16…` |
+| `bindingEligibleAt` | **2026-09-16 側**（ingest eligibility の max） |
+
+これは **2024 metadata を 2026 PRICE semantics へ自動適用してよい** という意味ではない。  
+`overviewRequestDate=2024-06-01` は別概念として候補に保持するだけ。
+
 - past backfill 禁止（`bindingEligibleAt` より前の decision / bar attribution に使わない）
-- Overview `date` query や payload `list_date` / `delisted_utc` / `last_updated_utc` で bindingEligibleAt を書き換えない
+- Overview `date` で `bindingEligibleAt` を書き換えない
+
+---
+
+## 7.1 Reference field temporal applicability
+
+`currency_name` / `primary_exchange` / `composite_figi` / `share_class_figi` / `active`:
+
+| Situation | Meaning |
+| --- | --- |
+| Overview with `overviewRequestDate` | その **provider as-of observation** の raw evidence |
+| Overview without date | latest/provider-current reference possession の raw evidence |
+
+**許可:** archive-level で「同じ Massive ticker namespaceの 2 observations」として binding candidate を作る。
+
+**禁止:** これらの reference fields を別時点 PRICE の metadata として **temporal applicability 確認なしに自動採用**すること。
+
+本 Gate では temporal applicability を **解決済みにしない**（概念上 `referenceTemporalApplicability = UNRESOLVED`）。
+
+→ **Trading Currency = PARTIAL** / **Venue = PARTIAL** 維持。
 
 ---
 
@@ -254,10 +302,13 @@ Bar-level が必要とするもの（今回未充足）:
 | Layer | Status |
 | --- | --- |
 | Official raw field | “currency that this asset is traded with” |
-| Trading currency **evidence candidate**（same-vendor archive-level binding 後） | **可（条件付き）** |
+| Trading currency **raw evidence** on Overview as-of observation | **可** |
+| Trading currency **evidence candidate** after archive-level provenance binding | **可（条件付き）** — temporal applicability は **UNRESOLVED** |
 | `DailyPrice.currency` 採用 / SOLVED | **不可（UNSOLVED 維持；PARTIAL evidence）** |
 
-ticker 一致 alone での採用 **禁止**。bar-level currency attribution **禁止**。
+ticker 一致 alone での採用 **禁止**。  
+別時点 PRICE への自動 metadata 適用 **禁止**。  
+bar-level currency attribution **禁止**。
 
 **Trading Currency verdict:** **PARTIAL**
 
@@ -266,7 +317,8 @@ ticker 一致 alone での採用 **禁止**。bar-level currency attribution **�
 | Layer | Status |
 | --- | --- |
 | Official raw field | “ISO code of the primary listing exchange”（sample `XNAS`） |
-| Venue / MIC **evidence candidate** | **可（条件付き）** — ISO-code-shaped string as Massive-stated primary listing exchange |
+| Venue / MIC **raw evidence** on Overview as-of observation | **可** |
+| Venue / MIC **evidence candidate** after archive-level binding | **可（条件付き）** — temporal applicability **UNRESOLVED** |
 | Venue **resolved** / SecurityId / listing-level Price claim | **不可**（Venue Gate: MIC formal model 未整備；SIP/venue semantics は PRICE 側 PARTIAL） |
 
 **Venue verdict:** **PARTIAL**
@@ -275,10 +327,11 @@ ticker 一致 alone での採用 **禁止**。bar-level currency attribution **�
 
 | Field | Keep as | Must not confuse with |
 | --- | --- | --- |
-| `composite_figi` | Massive-stated **Composite OpenFIGI** evidence candidate | OpenFIGI venue-level FIGI；SecurityId |
-| `share_class_figi` | Massive-stated **Share Class OpenFIGI** evidence candidate | venue-level FIGI；SecurityId |
+| `composite_figi` | Massive-stated **Composite OpenFIGI** evidence candidate（as-of observation） | OpenFIGI venue-level FIGI；SecurityId |
+| `share_class_figi` | Massive-stated **Share Class OpenFIGI** evidence candidate（as-of observation） | venue-level FIGI；SecurityId |
 
-同一 vendor 内で PRICE ticker ↔ Overview FIGI evidence を **forward reference chain candidate** に置ける（archive-level）。  
+同一 vendor 内で PRICE ticker ↔ Overview FIGI evidence を **forward provenance chain candidate** に置ける（archive-level）。  
+別時点 PRICE への自動 FIGI 適用は temporal applicability 未解決のため **禁止**。  
 FIGI → SecurityId **禁止**。OpenFIGI consistency は **別 Gate**。
 
 ### 11.4 `active` / delisted / Overview missing
@@ -289,6 +342,7 @@ FIGI → SecurityId **禁止**。OpenFIGI consistency は **別 Gate**。
 | Overview missing = Security absent | **NO**（not found / unsupported / delisted / inactive / plan/rate limit / other） |
 | Ticker Overview alone = complete Security Master | **NO** |
 | survivorship-safe master | **NO** |
+| different as-of: `active=true` → later `active=false` | **state transition candidate**（即 CONFLICT にしない；下記 §14） |
 
 Complete master 用途の候補: All Tickers + `active=false` 等（**今回 client 追加禁止**）。
 
@@ -309,7 +363,7 @@ Complete master 用途の候補: All Tickers + `active=false` 等（**今回 cli
 9. ambiguity / semantic conflict 無し（下記 §14）
 
 **これだけで言えること:** archive-level same-vendor provenance binding candidate。  
-**言えないこと:** SecurityId、bar-level identity、DailyPrice、complete master、historical knownAt。
+**言えないこと:** SecurityId、bar-level identity、DailyPrice、complete master、historical knownAt、reference fields の PRICE への temporal 適用（`referenceTemporalApplicability` は UNRESOLVED）。
 
 ---
 
@@ -318,7 +372,7 @@ Complete master 用途の候補: All Tickers + `active=false` 等（**今回 cli
 ### Allowed (candidate)
 
 - 「`bindingEligibleAt` 以降、Massive ticker X の PRICE observation と reference observation を同一 provider provenance として関連付けられる」
-- 「Overview に `currency_name` / `primary_exchange` / FIGI が raw evidence として存在する（採用は別）」
+- 「Overview に `currency_name` / `primary_exchange` / FIGI が **その as-of observation の** raw evidence として存在する（PRICE への意味適用は temporal applicability 別）」
 
 ### Forbidden
 
@@ -327,31 +381,61 @@ Complete master 用途の候補: All Tickers + `active=false` 等（**今回 cli
 - 「この bar はこの MIC 上の価格」
 - 「過去から同じ FIGI だった」
 - 「Overview が無いので Security は存在しない」
+- 「Overview `date=2024-06-01` だから 2026 PRICE に 2024 currency/exchange/FIGI を自動適用してよい」
+- 「異なる as-of の field 差はすべて revision / identity CONFLICT」
 
 ---
 
-## 14. Revision / conflict
+## 14. Revision vs temporal state difference
 
-### Overview revisions（same ticker, different hash）
+既存 archive 契約に合わせる。
 
-latest-wins **禁止**。明示 evidence 選択 + forward eligibility。
+### 14.1 Same exact requestKey
 
-意味的 conflict 候補（例）:
-
-| Change | Treatment |
+| Pattern | Classification |
 | --- | --- |
-| `currency_name` 変更 | identity/trading-currency conflict candidate → Fail-Closed until resolved |
-| `primary_exchange` 変更 | listing/venue conflict candidate |
-| `composite_figi` / `share_class_figi` 変更 | identity conflict candidate |
-| `active` true→false | status change；complete delisting claim には不足し得る |
-| branding / market_cap / description only | metadata refresh；identity conflict と自動同一視しない |
+| same requestKey + same hash | **duplicate candidate** |
+| same requestKey + different hash | **revision candidate**（≠ correction confirmed；latest-wins 禁止） |
 
-単なる response metadata 更新と identity 変更を **分離**。疑義は `CONFLICT`。
+例: `GET|/v3/reference/tickers/AAPL|date=2024-06-01` を二度取得して body hash が異なる → revisionCandidate。
 
-### PRICE revision × Overview revision
+### 14.2 Same ticker, different as-of（different requestKey）
+
+例:
+
+```text
+GET|/v3/reference/tickers/AAPL|date=2024-01-01
+GET|/v3/reference/tickers/AAPL|date=2025-01-01
+```
+
+これは **別 as-of observations**。  
+`currency_name` / `primary_exchange` / FIGI / `active` に差があっても、それだけで **revision とは呼ばない**。
+
+分類: **temporal state difference / change candidate**
+
+禁止:
+
+- 自動 latest-wins
+- 自動 continuity
+- 自動 Security 同一判定
+- 即 identity CONFLICT 断定（疑義は別途 Fail-Closed；as-of 差そのものを revision と混同しない）
+
+### 14.3 `active` true → false across different as-of
+
+異なる as-of date 間の `active=true` → `active=false` は **正常な状態遷移の可能性**がある。
+
+- **即 CONFLICT とはしない**（state transition candidate）
+- ただし Ticker Overview 単独は complete delisted master ではない
+- historical identity continuity / survivorship-safe master には **使わない**
+
+### 14.4 Same requestKey revision 内の field 変化
+
+同一 exact requestKey の revisionCandidate で identity-bearing fields が変わる場合は、補正未確認の revision として扱い、自動採用禁止（correction confirmed ではない）。
+
+### 14.5 PRICE revision × Overview revision
 
 最新×最新の自動 join **禁止**。  
-各側の明示 `archiveId` + `bindingEligibleAt` で選択（実装は次工程）。
+各側の明示 `archiveId` + `bindingEligibleAt` +（Overview）`overviewRequestDate` で選択（実装は次工程）。
 
 ---
 
@@ -365,12 +449,16 @@ latest-wins **禁止**。明示 evidence 選択 + forward eligibility。
 | 4 | Overview later than historical bars in PRICE payload | archive-level candidate **可**；bar-level attribution **禁止** |
 | 5 | Overview current only + old PRICE bars | past backfill **FORBIDDEN** |
 | 6 | Overview `date` supplied | provider as-of evidence candidate；≠ historical knownAt |
-| 7 | `currency_name` present | Trading Currency **evidence candidate**（PARTIAL）；DailyPrice 採用なし |
-| 8 | `primary_exchange` present | Venue **evidence candidate**（PARTIAL）；venue resolved なし |
+| 7 | `currency_name` present | Trading Currency **evidence candidate**（PARTIAL）；temporal applicability UNRESOLVED；DailyPrice 採用なし |
+| 8 | `primary_exchange` present | Venue **evidence candidate**（PARTIAL）；temporal applicability UNRESOLVED；venue resolved なし |
 | 9 | `composite_figi` present | Composite OpenFIGI evidence candidate；≠ SecurityId |
-| 10 | same ticker / FIGI changed across Overview revisions | **CONFLICT / UNRESOLVED**（auto-pick 禁止） |
+| 10 | same exact requestKey / FIGI changed（revision） | revisionCandidate；auto-pick / correction confirmed **禁止** |
 | 11 | Overview missing | Security absent **判定禁止** |
 | 12 | `active=false` / delisted evidence incomplete | complete master claim **禁止** |
+| 13 | PRICE=2026 observation；Overview `date=2024-06-01`；ingested=2026 | archive-level provenance candidate **可**；`bindingEligibleAt`=2026 ingest 側；currency/exchange/FIGI を 2026 PRICE へ temporal applicability 確認なしに **採用禁止** |
+| 14 | same ticker；Overview `date=2024` / `date=2025`；different hash | **revision と断定しない** → **temporal state difference** |
+| 15 | same exact requestKey；different hash | **revisionCandidate**；≠ correction confirmed |
+| 16 | as-of A `active=true` / later as-of B `active=false` | **state transition candidate**；identity conflict と自動断定しない；survivorship master には使わない |
 
 ---
 
@@ -378,14 +466,14 @@ latest-wins **禁止**。明示 evidence 選択 + forward eligibility。
 
 | # | Question | Answer |
 | --- | --- | --- |
-| A | same-vendor ticker 一致だけで archive-level join candidate を作れるか | **YES（条件付き）** — §12 最低条件 + conflict 無し。SecurityId ではない |
+| A | same-vendor ticker 一致だけで archive-level join candidate を作れるか | **YES（条件付き）** — §12 最低条件 + conflict 無し。SecurityId ではない。reference field 自動適用ではない |
 | B | bar-level identity join は可能か | **NO**（NO-GO） |
-| C | `currency_name` は Trading Currency evidence として採用可能か | **PARTIAL YES as evidence candidate**（same-vendor binding 後）。DailyPrice.currency SOLVED ではない |
-| D | `primary_exchange` は venue evidence として採用可能か | **PARTIAL YES as evidence candidate**（ISO-code-shaped primary listing exchange per Massive）。venue resolved ではない |
-| E | composite/share_class FIGI をどの粒度で保持可能か | Massive-stated **Composite / Share Class OpenFIGI evidence candidates**；venue-level OpenFIGI と混同禁止；SecurityId 禁止 |
-| F | current Overview を historical PRICE へ適用可能か | archive-level binding **のみ**（`bindingEligibleAt` 以降）。bar-level / past backfill **不可** |
+| C | `currency_name` は Trading Currency evidence として採用可能か | **PARTIAL YES as evidence candidate**（provenance binding 後）。temporal applicability UNRESOLVED。DailyPrice.currency SOLVED ではない |
+| D | `primary_exchange` は venue evidence として採用可能か | **PARTIAL YES as evidence candidate**。temporal applicability UNRESOLVED。venue resolved ではない |
+| E | composite/share_class FIGI をどの粒度で保持可能か | Massive-stated **Composite / Share Class OpenFIGI evidence candidates**（as-of observation）；venue-level OpenFIGI と混同禁止；SecurityId 禁止 |
+| F | current Overview を historical PRICE へ適用可能か | archive-level provenance binding **のみ**（`bindingEligibleAt` 以降）。bar-level / past backfill / temporal auto-apply **不可** |
 | G | Ticker Overview 単独で complete Security Master になるか | **NO** |
-| H | 次に実装すべき最小作業 | **A. Massive same-vendor binding evidence 最小実装** |
+| H | 次に実装すべき最小作業 | **A. Massive same-vendor binding evidence 最小実装**（provenance relation と referenceTemporalApplicability を別状態で持つ） |
 
 ---
 
@@ -425,14 +513,21 @@ latest-wins **禁止**。明示 evidence 選択 + forward eligibility。
 
 | Option | Select? |
 | --- | --- |
-| **A. Massive same-vendor binding evidence 最小実装** | **YES** |
-| B. Trading Currency Evidence PoC | 後続（binding 無しでは provenance 欠落） |
+| **A. Massive same-vendor binding evidence 最小実装** | **YES**（再評価後も選定） |
+| B. Trading Currency Evidence PoC | 後続（binding + temporal applicability 無しでは provenance 欠落） |
 | C. All Tickers inactive/delisted archive PoC | 必要だが complete master 軸；本 join blocker の最短ではない |
 | D. MIC/Venue evidence PoC | binding 後 |
 | E. FIGI consistency Gate | 別軸 |
 | F. SecurityId Issuance Gate | 時期尚早 |
 
-**選定理由:** archive-level PASS を実体化する最小実装が、currency / venue evidence を Fail-Closed で運ぶ前提条件。Kotlin join model は evidence 記録に限定し、SecurityId / DailyPrice / bar-level attribution は開かない。
+**選定理由:** archive-level PASS を実体化する最小実装が、currency / venue evidence を Fail-Closed で運ぶ前提条件。
+
+**実装時の必須分離:**
+
+1. **archive-level provenance relation**（same Massive ticker namespace の 2 observations）
+2. **reference field temporal applicability**（default UNRESOLVED；currency/exchange/FIGI/active の PRICE 意味適用は別状態）
+
+Kotlin join model は evidence 記録に限定し、SecurityId / DailyPrice / bar-level attribution / temporal auto-apply は開かない。
 
 ---
 
