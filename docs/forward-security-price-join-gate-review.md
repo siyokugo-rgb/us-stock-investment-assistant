@@ -540,13 +540,13 @@ OpenFIGI request-side provenance は **main で充足**:
 
 **まだ開かないもの:** Security identity resolved、SecurityId 自動発行、PriceSecurityJoinCandidate、DailyPrice、currency 推測、MIC、Backtest
 
-**次の最小作業（1つ）:** 必要なら Trading Currency source PoC（DailyPrice 専用）または Venue/MIC evidence model。  
+**次の最小作業（1つ）:** **MIC mapping evidence PoC**（OpenFIGI `micCode` request provenance）。詳細は [`venue-listing-identity-gate-review.md`](venue-listing-identity-gate-review.md)。  
 **含めない:** SecurityId 自動発行、DailyPrice mapping、current mapping past backfill、Android UI
 
 その他の次点:
 
+- ShareClassEvidence PoC  
 - Trading Currency source PoC（DailyPrice 専用）  
-- Venue/MIC evidence model  
 - SecurityId issuance boundary（文書＋将来実装）
 
 ---
