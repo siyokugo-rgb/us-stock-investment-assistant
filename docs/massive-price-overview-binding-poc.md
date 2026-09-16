@@ -59,8 +59,13 @@ Reasons: `PRICE_NOT_OBSERVED`, `OVERVIEW_NOT_OBSERVED`, `PRICE_ELIGIBILITY_MISSI
 2. Overview: `domain=SECURITY_MASTER`, `source=massive.stocks.ticker_overview`, OBSERVED, eligibility ≠ null  
 3. `MassiveDailyAggsRequestKey` / `MassiveTickerOverviewRequestKey` strict parse  
 4. case-sensitive exact ticker match  
-5. Overview `rawPayloadUri` + `rawPayloadHash`；bytes SHA-256 一致；`MassiveTickerOverviewArchiveValidator` 再検証 PASS；validated ticker 一致  
-6. CANDIDATE: `bindingEligibleAt = max(...)`；`referenceTemporalApplicability = UNRESOLVED`；`reason = null`
+5. Overview `rawPayloadUri` を **必ず on-disk 読込** → SHA-256 == `rawPayloadHash` → `MassiveTickerOverviewArchiveValidator` 再検証 PASS；validated ticker 一致  
+6. PRICE も同様に on-disk raw 存在 + SHA-256 == `rawPayloadHash`（semantic 全面再parseはしない）  
+7. CANDIDATE: `bindingEligibleAt = max(...)`；`referenceTemporalApplicability = UNRESOLVED`；`reason = null`
+
+**禁止:** caller-supplied response bytes で archived raw を迂回すること。`derive(price, overview)` のみ。
+
+missing / unreadable / hash mismatch → `ArchiveValidationException` Fail-Closed（巨大 reason enum 追加なし）。
 
 ### Prohibited promotion
 

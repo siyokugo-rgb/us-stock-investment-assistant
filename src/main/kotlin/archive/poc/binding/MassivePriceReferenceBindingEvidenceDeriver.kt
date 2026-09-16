@@ -17,6 +17,9 @@ import java.time.Instant
  * Derives [MassivePriceReferenceBindingEvidence] from Massive PRICE + Overview OBSERVED archives.
  *
  * Archive-level same-vendor provenance only.
+ * Always reads Overview (and PRICE) bytes from archived [ManifestRecord.rawPayloadUri] —
+ * never accepts caller-supplied response bytes as a substitute for on-disk raw.
+ *
  * Forbidden: caller free-form ticker/date, SecurityId, DailyPrice, currency/MIC adoption,
  * bar-level attribution, past backfill, latest-wins, OpenFIGI model reuse.
  */
@@ -26,12 +29,11 @@ object MassivePriceReferenceBindingEvidenceDeriver {
      *
      * Fail-Closed throws [ArchiveValidationException] on:
      * - malformed PRICE requestKey (cannot derive providerTicker)
-     * - Overview raw missing / unreadable / hash mismatch
+     * - PRICE/Overview archived raw missing, unreadable, or SHA-256 mismatch
      */
     fun derive(
         priceRecord: ManifestRecord,
         overviewRecord: ManifestRecord,
-        overviewResponseBytes: ByteArray? = null,
     ): MassivePriceReferenceBindingEvidence {
         if (
             priceRecord.domain != MassiveDailyAggsArchiveClient.DOMAIN ||
@@ -135,24 +137,26 @@ object MassivePriceReferenceBindingEvidenceDeriver {
             )
         }
 
-        val rawUri = overviewRecord.rawPayloadUri
-        val rawHash = overviewRecord.rawPayloadHash
-        if (rawUri.isNullOrBlank() || rawHash.isNullOrBlank()) {
-            return ineligible(
-                MassivePriceReferenceBindingReason.OVERVIEW_RAW_INVALID,
-                overviewRequestDate = overviewParsed.date,
+        // Archive integrity: PRICE on-disk raw must exist and match manifest hash.
+        // No full PRICE semantic re-parse here — OBSERVED contract is assumed separately.
+        requireArchivedRawIntegrity(
+            record = priceRecord,
+            label = "Massive PRICE response raw",
+        )
+
+        val overviewUri = overviewRecord.rawPayloadUri
+        val overviewHash = overviewRecord.rawPayloadHash
+        if (overviewUri.isNullOrBlank() || overviewHash.isNullOrBlank()) {
+            throw ArchiveValidationException(
+                "Massive Overview OBSERVED archive missing rawPayloadUri/rawPayloadHash",
             )
         }
 
-        val bodyBytes =
-            overviewResponseBytes
-                ?: readBytesOrThrow(rawUri, "Massive Overview response raw")
-        val actualHash = Sha256Hex.of(bodyBytes)
-        if (actualHash != rawHash) {
-            throw ArchiveValidationException(
-                "Massive Overview raw hash mismatch: onDisk=$actualHash manifest=$rawHash",
+        val overviewBytes =
+            requireArchivedRawIntegrity(
+                record = overviewRecord,
+                label = "Massive Overview response raw",
             )
-        }
 
         val httpStatus =
             overviewRecord.httpStatus
@@ -164,7 +168,7 @@ object MassivePriceReferenceBindingEvidenceDeriver {
         val validation =
             MassiveTickerOverviewArchiveValidator.validate(
                 httpStatus = httpStatus,
-                bodyBytes = bodyBytes,
+                bodyBytes = overviewBytes,
                 requestedTicker = priceTicker,
             )
         if (!validation.okForObserved) {
@@ -206,6 +210,35 @@ object MassivePriceReferenceBindingEvidenceDeriver {
         )
     }
 
+    /**
+     * Reads [ManifestRecord.rawPayloadUri] from disk and verifies SHA-256 == [ManifestRecord.rawPayloadHash].
+     * Never substitutes caller-supplied bytes for the archived object.
+     */
+    private fun requireArchivedRawIntegrity(
+        record: ManifestRecord,
+        label: String,
+    ): ByteArray {
+        val uri = record.rawPayloadUri
+        val expectedHash = record.rawPayloadHash
+        if (uri.isNullOrBlank() || expectedHash.isNullOrBlank()) {
+            throw ArchiveValidationException(
+                "$label: OBSERVED archive missing rawPayloadUri/rawPayloadHash",
+            )
+        }
+        val path = Path.of(uri)
+        if (!Files.isRegularFile(path)) {
+            throw ArchiveValidationException("$label missing or not a regular file: $uri")
+        }
+        val bytes = Files.readAllBytes(path)
+        val actualHash = Sha256Hex.of(bytes)
+        if (actualHash != expectedHash) {
+            throw ArchiveValidationException(
+                "$label hash mismatch: onDisk=$actualHash manifest=$expectedHash",
+            )
+        }
+        return bytes
+    }
+
     private fun shellIneligible(
         priceRecord: ManifestRecord,
         overviewRecord: ManifestRecord,
@@ -231,15 +264,4 @@ object MassivePriceReferenceBindingEvidenceDeriver {
             status = MassivePriceReferenceBindingStatus.INELIGIBLE,
             reason = reason,
         )
-
-    private fun readBytesOrThrow(
-        uri: String,
-        label: String,
-    ): ByteArray {
-        val path = Path.of(uri)
-        if (!Files.isRegularFile(path)) {
-            throw ArchiveValidationException("$label missing or not a regular file: $uri")
-        }
-        return Files.readAllBytes(path)
-    }
 }

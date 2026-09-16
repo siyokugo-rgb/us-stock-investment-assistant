@@ -24,6 +24,7 @@ import kotlin.test.assertTrue
 
 /**
  * Synthetic QA for Massive PRICE ↔ Overview archive-level binding evidence.
+ * Fixtures write real temp raw files with exact SHA-256 — no /tmp dummy paths.
  * No live network. No SecurityId / DailyPrice / knownAt / MIC / bar attribution.
  */
 class MassivePriceReferenceBindingEvidenceTest {
@@ -32,6 +33,11 @@ class MassivePriceReferenceBindingEvidenceTest {
     private val overviewBody: ByteArray =
         this::class.java.getResourceAsStream(
             "/archive/poc/massive/massive-ticker-overview-aapl-sanitized.json",
+        )!!.readBytes()
+
+    private val priceBody: ByteArray =
+        this::class.java.getResourceAsStream(
+            "/archive/poc/massive/massive-aapl-unadjusted-sanitized.json",
         )!!.readBytes()
 
     private val priceElig = Instant.parse("2026-09-16T09:00:00Z")
@@ -47,14 +53,13 @@ class MassivePriceReferenceBindingEvidenceTest {
         root.toFile().deleteRecursively()
     }
 
-    private fun writeOverviewRaw(
+    private fun writeRaw(
+        domain: String,
+        source: String,
         archiveId: String,
-        body: ByteArray = overviewBody,
+        body: ByteArray,
     ): Path {
-        val dir =
-            root.resolve(MassiveTickerOverviewArchiveClient.DOMAIN)
-                .resolve(MassiveTickerOverviewArchiveClient.SOURCE)
-                .resolve("raw")
+        val dir = root.resolve(domain).resolve(source).resolve("raw")
         Files.createDirectories(dir)
         val path = dir.resolve("$archiveId.raw")
         Files.write(path, body)
@@ -71,10 +76,29 @@ class MassivePriceReferenceBindingEvidenceTest {
         domain: String = MassiveDailyAggsArchiveClient.DOMAIN,
         requestKey: String? = null,
         archiveId: String = "price-1",
+        body: ByteArray = priceBody,
+        rawHashOverride: String? = null,
+        deleteRawAfterWrite: Boolean = false,
+        omitRaw: Boolean = false,
     ): ManifestRecord {
         val key =
             requestKey
                 ?: MassiveDailyAggsArchiveClient.requestKey(ticker, from, to)
+        val path =
+            if (!omitRaw && status != ObservationStatus.PROVIDER_FAILURE) {
+                writeRaw(domain, source, archiveId, body)
+            } else {
+                null
+            }
+        if (deleteRawAfterWrite && path != null) {
+            Files.delete(path)
+        }
+        val hash =
+            when {
+                omitRaw || status == ObservationStatus.PROVIDER_FAILURE -> null
+                rawHashOverride != null -> rawHashOverride
+                else -> Sha256Hex.of(body)
+            }
         return ManifestRecord(
             archiveId = archiveId,
             domain = domain,
@@ -83,14 +107,14 @@ class MassivePriceReferenceBindingEvidenceTest {
             attemptedAt = Instant.parse("2026-09-16T08:59:00Z"),
             attemptFinishedAt = Instant.parse("2026-09-16T08:59:30Z"),
             fetchedAt =
-                if (status == ObservationStatus.OBSERVED || status == ObservationStatus.REJECTED_VALIDATION) {
-                    Instant.parse("2026-09-16T08:59:30Z")
-                } else {
+                if (status == ObservationStatus.PROVIDER_FAILURE) {
                     null
+                } else {
+                    Instant.parse("2026-09-16T08:59:30Z")
                 },
             ingestedAt = Instant.parse("2026-09-16T09:00:00Z"),
-            rawPayloadHash = if (status != ObservationStatus.PROVIDER_FAILURE) "a".repeat(64) else null,
-            rawPayloadUri = if (status != ObservationStatus.PROVIDER_FAILURE) "/tmp/unused-price.raw" else null,
+            rawPayloadHash = hash,
+            rawPayloadUri = path?.toString(),
             httpStatus = if (status != ObservationStatus.PROVIDER_FAILURE) 200 else null,
             transportStatus =
                 if (status == ObservationStatus.PROVIDER_FAILURE) {
@@ -115,15 +139,24 @@ class MassivePriceReferenceBindingEvidenceTest {
         archiveId: String = "overview-1",
         rawHashOverride: String? = null,
         omitRaw: Boolean = false,
+        deleteRawAfterWrite: Boolean = false,
         httpStatus: Int? = 200,
     ): ManifestRecord {
         val key =
             requestKey
                 ?: MassiveTickerOverviewArchiveClient.requestKey(ticker, date)
-        val path = if (!omitRaw) writeOverviewRaw(archiveId, body) else null
+        val path =
+            if (!omitRaw && status != ObservationStatus.PROVIDER_FAILURE) {
+                writeRaw(domain, source, archiveId, body)
+            } else {
+                null
+            }
+        if (deleteRawAfterWrite && path != null) {
+            Files.delete(path)
+        }
         val hash =
             when {
-                omitRaw -> null
+                omitRaw || status == ObservationStatus.PROVIDER_FAILURE -> null
                 rawHashOverride != null -> rawHashOverride
                 else -> Sha256Hex.of(body)
             }
@@ -135,7 +168,7 @@ class MassivePriceReferenceBindingEvidenceTest {
             attemptedAt = Instant.parse("2026-09-16T09:59:00Z"),
             attemptFinishedAt = Instant.parse("2026-09-16T09:59:30Z"),
             fetchedAt =
-                if (omitRaw && status == ObservationStatus.PROVIDER_FAILURE) {
+                if (status == ObservationStatus.PROVIDER_FAILURE) {
                     null
                 } else {
                     Instant.parse("2026-09-16T09:59:30Z")
@@ -145,7 +178,7 @@ class MassivePriceReferenceBindingEvidenceTest {
             rawPayloadUri = path?.toString(),
             httpStatus = httpStatus,
             transportStatus =
-                if (status == ObservationStatus.PROVIDER_FAILURE && omitRaw) {
+                if (status == ObservationStatus.PROVIDER_FAILURE) {
                     TransportStatus.TRANSPORT_FAILURE
                 } else {
                     TransportStatus.HTTP_RESPONSE
@@ -156,9 +189,14 @@ class MassivePriceReferenceBindingEvidenceTest {
     }
 
     @Test
-    fun validObservedPairIsCandidateWithRequestKeyDerivedTicker() {
+    fun validObservedPairWithOnDiskRawsIsCandidate() {
         val price = priceRecord()
         val overview = overviewRecord()
+        assertTrue(Files.isRegularFile(Path.of(price.rawPayloadUri!!)))
+        assertTrue(Files.isRegularFile(Path.of(overview.rawPayloadUri!!)))
+        assertEquals(Sha256Hex.of(priceBody), price.rawPayloadHash)
+        assertEquals(Sha256Hex.of(overviewBody), overview.rawPayloadHash)
+
         val evidence =
             MassivePriceReferenceBindingEvidenceDeriver.derive(price, overview)
         assertEquals(MassivePriceReferenceBindingStatus.CANDIDATE, evidence.status)
@@ -182,6 +220,56 @@ class MassivePriceReferenceBindingEvidenceTest {
             MassiveReferenceTemporalApplicability.UNRESOLVED,
             evidence.referenceTemporalApplicability,
         )
+    }
+
+    @Test
+    fun priceRawFileMissingFailsClosed() {
+        assertFailsWith<ArchiveValidationException> {
+            MassivePriceReferenceBindingEvidenceDeriver.derive(
+                priceRecord(deleteRawAfterWrite = true),
+                overviewRecord(),
+            )
+        }
+    }
+
+    @Test
+    fun priceRawHashMismatchFailsClosed() {
+        assertFailsWith<ArchiveValidationException> {
+            MassivePriceReferenceBindingEvidenceDeriver.derive(
+                priceRecord(rawHashOverride = "b".repeat(64)),
+                overviewRecord(),
+            )
+        }
+    }
+
+    @Test
+    fun overviewRawFileMissingFailsClosed() {
+        assertFailsWith<ArchiveValidationException> {
+            MassivePriceReferenceBindingEvidenceDeriver.derive(
+                priceRecord(),
+                overviewRecord(deleteRawAfterWrite = true),
+            )
+        }
+    }
+
+    @Test
+    fun overviewRawHashMismatchFailsClosed() {
+        assertFailsWith<ArchiveValidationException> {
+            MassivePriceReferenceBindingEvidenceDeriver.derive(
+                priceRecord(),
+                overviewRecord(rawHashOverride = "b".repeat(64)),
+            )
+        }
+    }
+
+    @Test
+    fun deriveApiHasNoCallerBytesBypassParameter() {
+        // Production path is derive(price, overview) only — no overviewResponseBytes.
+        val method =
+            MassivePriceReferenceBindingEvidenceDeriver::class.java.methods
+                .filter { it.name == "derive" }
+        assertEquals(1, method.size)
+        assertEquals(2, method.single().parameterCount)
     }
 
     @Test
@@ -210,23 +298,6 @@ class MassivePriceReferenceBindingEvidenceTest {
     }
 
     @Test
-    fun priceEligibilityMissingReasonExistsForDefenseInDepth() {
-        // ManifestRecord forbids OBSERVED + null eligibility; deriver still checks defensively.
-        assertEquals(
-            "PRICE_ELIGIBILITY_MISSING",
-            MassivePriceReferenceBindingReason.PRICE_ELIGIBILITY_MISSING.name,
-        )
-    }
-
-    @Test
-    fun overviewEligibilityMissingReasonExistsForDefenseInDepth() {
-        assertEquals(
-            "OVERVIEW_ELIGIBILITY_MISSING",
-            MassivePriceReferenceBindingReason.OVERVIEW_ELIGIBILITY_MISSING.name,
-        )
-    }
-
-    @Test
     fun wrongPriceSourceIsIneligible() {
         val evidence =
             MassivePriceReferenceBindingEvidenceDeriver.derive(
@@ -247,7 +318,7 @@ class MassivePriceReferenceBindingEvidenceTest {
     }
 
     @Test
-    fun missingOverviewRawUriIsIneligible() {
+    fun missingOverviewRawUriWhenNotObservedIsIneligible() {
         val evidence =
             MassivePriceReferenceBindingEvidenceDeriver.derive(
                 priceRecord(),
@@ -295,16 +366,6 @@ class MassivePriceReferenceBindingEvidenceTest {
     }
 
     @Test
-    fun overviewRawHashMismatchFailsClosed() {
-        assertFailsWith<ArchiveValidationException> {
-            MassivePriceReferenceBindingEvidenceDeriver.derive(
-                priceRecord(),
-                overviewRecord(rawHashOverride = "b".repeat(64)),
-            )
-        }
-    }
-
-    @Test
     fun overviewRawValidationFailureIsIneligible() {
         val bad =
             """{"status":"ERROR","error":"nope"}""".toByteArray(StandardCharsets.UTF_8)
@@ -332,7 +393,6 @@ class MassivePriceReferenceBindingEvidenceTest {
             MassiveReferenceTemporalApplicability.UNRESOLVED,
             evidence.referenceTemporalApplicability,
         )
-        // Carried raw fields remain evidence only — not PRICE adoption.
         assertEquals("usd", evidence.currencyName)
     }
 
@@ -363,7 +423,6 @@ class MassivePriceReferenceBindingEvidenceTest {
         assertFalse(text.contains("knownAt"))
         assertFalse(text.contains("tradingDate"))
         assertFalse(text.contains("barTimestamp"))
-        // Model has no MIC/SecurityId/DailyPrice properties — spot-check carried fields only.
         assertNotNull(evidence.currencyName)
         assertEquals(
             MassiveReferenceTemporalApplicability.UNRESOLVED,
