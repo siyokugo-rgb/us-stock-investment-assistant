@@ -529,6 +529,8 @@ GET|/v3/reference/tickers/AAPL|date=2025-01-01
 
 Kotlin join model は evidence 記録に限定し、SecurityId / DailyPrice / bar-level attribution / temporal auto-apply は開かない。
 
+**実装参照:** [`massive-price-overview-binding-poc.md`](massive-price-overview-binding-poc.md)（`MassivePriceReferenceBindingEvidence`）
+
 ---
 
 ## 20. Related docs
