@@ -98,13 +98,16 @@ Massive `t` = aggregate **window start** ms → knownAt / publication / DailyPri
 
 | Case | Status | fetchedAt | raw | eligibility |
 | --- | --- | --- | --- | --- |
-| HTTP 2xx + UTF-8 + status=OK + adjusted=false + ticker match + ≥1 valid results | `OBSERVED` | yes | yes | = ingestedAt |
-| HTTP 2xx but validation fail（adjusted=true / empty / OHLCV / …） | `REJECTED_VALIDATION` | yes | yes | null |
+| HTTP 2xx + UTF-8 + status=OK + adjusted=false + ticker match + **no string `next_url`** + ≥1 valid results | `OBSERVED` | yes | yes | = ingestedAt |
+| HTTP 2xx but validation fail（`next_url` string / adjusted=true / empty / OHLCV / …） | `REJECTED_VALIDATION` | yes | yes | null |
 | complete 4xx/5xx body | `PROVIDER_FAILURE` | yes | yes | null |
 | transport / request-construction failure | `PROVIDER_FAILURE` | null | null | null |
 | raw/manifest local failure | `LOCAL_ARCHIVE_FAILURE` | maybe | maybe | null |
+| `MASSIVE_API_KEY` missing（local configuration） | **no possession / no provider failure record** — fail-fast `IllegalStateException` before HTTP | — | — | — |
 
 Transport failure notes = exception **class simple name only**（`e.message` / full URL / apiKey 禁止）。
+
+Local configuration（API key 未設定）は provider HTTP attempt 前に fail-fast。provider failure possession を生成しない。live helper は key 無し → `LIVE_UNVERIFIED`（mock 禁止）。
 
 ---
 
@@ -116,10 +119,23 @@ Transport failure notes = exception **class simple name only**（`e.message` / f
 - `status == "OK"`
 - `ticker` == request ticker（case-sensitive）
 - `adjusted == false`
+- **`next_url` が string として存在しない**（null / JSON null のみ許容）
 - `results` array 存在かつ ≥1
 - optional `resultsCount` 整合
 - row: `o,h,l,c,v,t` finite；negative price/volume reject；high≥low；O/C in range；`t` positive integer；strict ascending；no duplicate `t`
 - optional `n` / `vw` があれば非負 finite
+
+### Pagination（Fail-Closed）
+
+公式 Custom Bars response の optional `next_url` が **string**（空文字含む）として root に存在する場合:
+
+- `REJECTED_VALIDATION`
+- `eligibilityBoundaryAt = null`
+- OBSERVED 禁止（first page を requested range の完全 coverage とみなさない）
+- raw bytes / SHA-256 は immutable 保存
+- **`next_url` を follow しない**（PoC は pagination 追跡を実装しない）
+- `next_url` を requestKey に入れない / 値を notes・log に出さない（secret 有無を仮定しない）
+- 空文字 `next_url` の provider 意味は推測せず Fail-Closed
 
 Validation 成功 ≠ DailyPrice 生成。
 
@@ -144,8 +160,14 @@ Validation 成功 ≠ DailyPrice 生成。
 ./gradlew --no-daemon -q runMassivePriceArchivePoc
 ```
 
-（task が無い場合は `MassiveDailyAggsLiveArchivePocKt` を main 実行）
+Default 取得窓（live smoke 専用；DailyPrice.tradingDate / market calendar には使わない）:
 
+| Env | Default |
+| --- | --- |
+| `MASSIVE_TO` | UTC `today.minusDays(2)` |
+| `MASSIVE_FROM` | UTC `today.minusDays(14)` |
+
+固定年月日は使わない（将来腐るため）。`MASSIVE_FROM` / `MASSIVE_TO` で override 可。  
 Basic 制約（5 calls/min、2y history、EOD）を超えない。live raw は git commit 禁止。
 
 ---
@@ -160,11 +182,15 @@ Synthetic coverage（`MassiveDailyAggsForwardArchivePocTest`）:
 - ticker mismatch / missing / empty results
 - malformed JSON / invalid UTF-8（exact raw 保持）
 - negative OHLC/volume、high&lt;low、O/C range、duplicate/malformed/non-asc `t`
+- **pagination: no `next_url` → OBSERVED；`next_url` present → REJECTED + raw/hash + coverage 0**
+- blank `next_url` Fail-Closed reject
+- duplicate / revision 契約維持（pagination reject 後も）
 - 403 / 429 / 500 PROVIDER_FAILURE
 - transport failure（no fetchedAt/hash；class name only）
-- request construction secret 非流出
+- request construction secret 非流出（malformed baseUrl 含む）
+- **API key missing → fail-fast；provider failure possession 非生成**
 - requestKey apiKey 非混入
-- duplicate / revision
+- **dynamic live window `from < to` / recent relative to todayUtc**
 - coverage OBSERVED only
 - orphan audit
 - currency / MIC / FIGI / SecurityId / DailyPrice 非生成

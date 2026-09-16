@@ -66,15 +66,23 @@ class MassiveDailyAggsArchiveClient(
         require(ticker.isNotBlank()) { "ticker must not be blank" }
         require(from.isNotBlank()) { "from must not be blank" }
         require(to.isNotBlank()) { "to must not be blank" }
+        // Local configuration: fail-fast BEFORE provider HTTP attempt / possession record.
+        // Missing API key is not a provider failure (no request was sent).
+        val key =
+            apiKey
+                ?: throw IllegalStateException(
+                    "${ENV_API_KEY} required for live HTTP (local configuration; no provider attempt)",
+                )
+        require(key.isNotBlank()) {
+            "${ENV_API_KEY} required for live HTTP (local configuration; no provider attempt)"
+        }
+
         val requestKey = requestKeyFor(ticker, from, to)
         val attemptedAt = clock()
 
         // Endpoint / URI / query(apiKey) / HttpRequest build / send share one sanitized boundary.
         // Catch never rethrows and never stores e.message (may embed request URI + apiKey).
         return try {
-            val key =
-                apiKey
-                    ?: throw IllegalStateException("MASSIVE_API_KEY required for live HTTP")
             val encTicker = urlPathSegment(ticker.trim())
             val encFrom = urlPathSegment(from.trim())
             val encTo = urlPathSegment(to.trim())

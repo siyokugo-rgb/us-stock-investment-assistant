@@ -1,5 +1,8 @@
 package archive.poc.massive
 
+import java.time.LocalDate
+import java.time.ZoneOffset
+
 /**
  * Optional live smoke for Massive Custom Bars 1d unadjusted forward archive.
  *
@@ -7,12 +10,13 @@ package archive.poc.massive
  * - MASSIVE_API_KEY (required for live; if absent → LIVE_UNVERIFIED, exit 0)
  * - ARCHIVE_ROOT (optional; default ./archive-runtime)
  * - MASSIVE_TICKER (optional; default AAPL)
- * - MASSIVE_FROM / MASSIVE_TO (optional; default a small recent window)
+ * - MASSIVE_FROM / MASSIVE_TO (optional; default recent UTC window via [defaultLiveWindow])
  * - MASSIVE_LIMIT (optional; default 50 for smoke)
  *
  * Never invents knownAt / SecurityId / currency / MIC / FIGI.
  * Never maps DailyPrice. Never fetches Ticker Overview.
  * Does not create API keys. Does not mock network.
+ * Default from/to are live-smoke acquisition bounds only — not DailyPrice.tradingDate.
  */
 fun main() {
     val env = System.getenv()
@@ -28,9 +32,9 @@ fun main() {
             env["ARCHIVE_ROOT"]?.trim()?.takeIf { it.isNotEmpty() } ?: "archive-runtime",
         )
     val ticker = env["MASSIVE_TICKER"]?.trim()?.takeIf { it.isNotEmpty() } ?: "AAPL"
-    // Small window within Basic 2y history; caller may override.
-    val to = env["MASSIVE_TO"]?.trim()?.takeIf { it.isNotEmpty() } ?: "2024-01-10"
-    val from = env["MASSIVE_FROM"]?.trim()?.takeIf { it.isNotEmpty() } ?: "2024-01-02"
+    val window = MassiveDailyAggsLiveWindow.defaultLiveWindow()
+    val to = env["MASSIVE_TO"]?.trim()?.takeIf { it.isNotEmpty() } ?: window.to
+    val from = env["MASSIVE_FROM"]?.trim()?.takeIf { it.isNotEmpty() } ?: window.from
     val limit =
         env["MASSIVE_LIMIT"]?.trim()?.toIntOrNull()?.takeIf { it > 0 }
             ?: 50
@@ -76,4 +80,21 @@ fun main() {
             archive.poc.ObservationStatus.MISSING -> "LIVE_MISSING"
         }
     println("liveClassification=$liveClass")
+}
+
+/**
+ * Live-smoke date window only (UTC LocalDate). Not market calendar / DailyPrice.tradingDate.
+ */
+object MassiveDailyAggsLiveWindow {
+    data class Window(
+        val from: String,
+        val to: String,
+    )
+
+    fun defaultLiveWindow(todayUtc: LocalDate = LocalDate.now(ZoneOffset.UTC)): Window {
+        val to = todayUtc.minusDays(2)
+        val from = todayUtc.minusDays(14)
+        require(from.isBefore(to)) { "live window requires from < to" }
+        return Window(from = from.toString(), to = to.toString())
+    }
 }

@@ -8,11 +8,13 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
+import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -565,5 +567,152 @@ class MassiveDailyAggsForwardArchivePocTest {
         } catch (e: IllegalArgumentException) {
             assertTrue(e.message!!.contains("possession.requestKey mismatch"))
         }
+    }
+
+    @Test
+    fun validResponseWithoutNextUrlRemainsObserved() {
+        // Case A: valid body has no next_url → OBSERVED (single-response complete).
+        assertFalse(String(validBody, StandardCharsets.UTF_8).contains("next_url"))
+        val result = archive(body = validBody.copyOf())
+        assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
+        assertNotNull(result.record.eligibilityBoundaryAt)
+        assertEquals(1, result.coverage.observedCount)
+    }
+
+    @Test
+    fun nextUrlPresentRejectsValidationKeepsRawAndBlocksCoverage() {
+        // Case B/C: next_url present → REJECTED_VALIDATION; first page is not OBSERVED coverage.
+        val body =
+            mutateValid {
+                it.replace(
+                    "\"status\":\"OK\"",
+                    "\"next_url\":\"https://api.massive.com/v2/aggs/ticker/AAPL/range/1/day/" +
+                        "2024-01-02/2024-01-10?cursor=synthetic\",\"status\":\"OK\"",
+                )
+            }
+        val svc = service()
+        val result = archive(svc = svc, body = body)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertFalse(result.observedIngestSucceeded)
+        assertEquals(Sha256Hex.of(body), result.record.rawPayloadHash)
+        assertNotNull(result.record.rawPayloadUri)
+        val onDisk = Files.readAllBytes(Path.of(result.record.rawPayloadUri!!))
+        assertTrue(onDisk.contentEquals(body))
+        assertTrue(result.record.notes!!.contains("next_url present"))
+        assertTrue(result.record.notes!!.contains("pagination required") ||
+            result.record.notes!!.contains("incomplete single-response"))
+        // Notes must not echo next_url value (may embed secrets); requestKey stays secret-free.
+        assertFalse(result.record.notes!!.contains("cursor=synthetic"))
+        assertFalse(result.record.requestKey.contains("next_url", ignoreCase = true))
+        assertEquals(0, result.coverage.observedCount)
+        assertEquals(0, svc.currentCoverage().observedCount)
+    }
+
+    @Test
+    fun blankNextUrlIsFailClosedRejected() {
+        // Empty-string next_url semantics are not guessed — Fail-Closed reject.
+        val body =
+            mutateValid {
+                it.replace("\"status\":\"OK\"", "\"next_url\":\"\",\"status\":\"OK\"")
+            }
+        val result = archive(body = body)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertNotNull(result.record.rawPayloadUri)
+        assertTrue(result.record.notes!!.contains("next_url present"))
+    }
+
+    @Test
+    fun nextUrlRejectionDoesNotBreakDuplicateOrRevisionContract() {
+        // Case D: duplicate/revision contracts remain for complete (no next_url) bodies.
+        val svc = service()
+        val first = archive(svc = svc, body = validBody.copyOf())
+        val second = archive(svc = svc, body = validBody.copyOf())
+        assertEquals(first.record.archiveId, second.record.duplicateOf)
+        val alt = mutateValid { it.replace("185.64", "185.65") }
+        val third = archive(svc = svc, body = alt)
+        assertEquals(first.record.archiveId, third.record.revisionCandidateOf)
+        // Paginated incomplete response stays outside OBSERVED coverage.
+        val paged =
+            mutateValid {
+                it.replace(
+                    "\"status\":\"OK\"",
+                    "\"next_url\":\"https://example.invalid/next\",\"status\":\"OK\"",
+                )
+            }
+        val rejected = archive(svc = svc, body = paged)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, rejected.record.observationStatus)
+        assertEquals(2, svc.currentCoverage().observedCount)
+    }
+
+    @Test
+    fun missingApiKeyFailsFastWithoutProviderFailurePossession() {
+        val client =
+            MassiveDailyAggsArchiveClient(
+                baseUrl = "http://127.0.0.1:1",
+                apiKey = null,
+                clock = { nextInstant() },
+            )
+        val before = Files.exists(root.resolve("PRICE"))
+        val thrown =
+            assertFailsWith<IllegalStateException> {
+                client.executeDailyAggs(ticker, from, to)
+            }
+        assertTrue(thrown.message!!.contains("MASSIVE_API_KEY"))
+        assertTrue(thrown.message!!.contains("local configuration"))
+        assertFalse(thrown.message!!.contains("apiKey="))
+        // No archive root side-effects from a key-less execute.
+        assertEquals(before, Files.exists(root.resolve("PRICE")))
+
+        val svc =
+            MassiveDailyAggsForwardArchiveService(
+                archiveRoot = root,
+                client = client,
+                clock = { nextInstant() },
+                idGenerator = { "id-${ids.incrementAndGet()}" },
+            )
+        assertFailsWith<IllegalStateException> {
+            svc.archiveDailyAggs(ticker, from, to)
+        }
+        assertTrue(svc.readManifest().isEmpty())
+        assertEquals(0, svc.currentCoverage().observedCount)
+    }
+
+    @Test
+    fun apiKeySecretNeverEntersExceptionMessageOrRequestKey() {
+        val secret = "massive-live-secret-do-not-leak"
+        val client =
+            MassiveDailyAggsArchiveClient(
+                baseUrl = "not a uri!!!",
+                apiKey = secret,
+                limit = 50,
+                clock = { nextInstant() },
+            )
+        val possession = client.executeDailyAggs(ticker, from, to)
+        assertNull(possession.bodyBytes)
+        assertNotNull(possession.transportFailureMessage)
+        // Sanitized catch: class simple name only (no URI / message / secret).
+        assertTrue(possession.transportFailureMessage!!.matches(Regex("[A-Za-z][A-Za-z0-9_]*")))
+        assertFalse(possession.transportFailureMessage!!.contains(secret))
+        assertFalse(possession.transportFailureMessage!!.contains("apiKey", ignoreCase = true))
+        assertFalse(possession.transportFailureMessage!!.contains("://"))
+        assertFalse(possession.requestKey.contains(secret))
+        assertFalse(possession.requestKey.contains("apiKey", ignoreCase = true))
+        assertFalse(client.requestKeyFor(ticker, from, to).contains(secret))
+    }
+
+    @Test
+    fun defaultLiveWindowIsRecentUtcRangeWithFromBeforeTo() {
+        val today = LocalDate.of(2026, 9, 16)
+        val window = MassiveDailyAggsLiveWindow.defaultLiveWindow(today)
+        assertEquals("2026-09-02", window.from)
+        assertEquals("2026-09-14", window.to)
+        assertTrue(LocalDate.parse(window.from).isBefore(LocalDate.parse(window.to)))
+        // Relative to execution day — not a fixed historic Basic-2y claim.
+        assertEquals(today.minusDays(14).toString(), window.from)
+        assertEquals(today.minusDays(2).toString(), window.to)
+        val live = MassiveDailyAggsLiveWindow.defaultLiveWindow()
+        assertTrue(LocalDate.parse(live.from).isBefore(LocalDate.parse(live.to)))
     }
 }

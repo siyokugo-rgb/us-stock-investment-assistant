@@ -71,6 +71,24 @@ object MassiveDailyAggsArchiveValidator {
             return reject("ticker mismatch: response=$ticker requested=$requestedTicker")
         }
 
+        // Pagination: PoC archives a single response only. next_url means incomplete coverage
+        // of the requested range. Do not follow next_url; do not OBSERVE first page alone.
+        when (val next = root.map["next_url"]) {
+            null, is ArchiveJson.Null -> Unit
+            is ArchiveJson.Str -> {
+                // Blank and non-blank alike: presence of a string next_url is Fail-Closed.
+                // Empty-string semantics are not guessed; incomplete single-response archive.
+                return reject(
+                    "next_url present; incomplete single-response archive " +
+                        "(pagination required; next_url not followed)",
+                )
+            }
+            else ->
+                return reject(
+                    "next_url present with unexpected type; incomplete single-response archive",
+                )
+        }
+
         val resultsNode =
             root.map["results"]
                 ?: return reject("missing results; OBSERVED forbidden")
