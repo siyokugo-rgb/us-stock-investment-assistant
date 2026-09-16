@@ -58,23 +58,21 @@ class OpenFigiForwardArchiveService(
         val requestBody = OpenFigiMappingRequestBody.encode(jobs)
         return finalize(
             requestBodyBytes = requestBody,
-            requestJobCount = jobs.size,
             possession = client.executeMapping(requestBody),
         )
     }
 
     /**
      * Synthetic / possessed-path ingest. [requestBodyBytes] must be the exact bytes that
-     * correspond to [possession] / [requestJobCount] (no re-serialize).
+     * correspond to [possession.requestPayloadHash] (no re-serialize). Job count is derived
+     * by strict-parsing the request body — never caller-supplied.
      */
     fun archivePossessedResponse(
         requestBodyBytes: ByteArray,
-        requestJobCount: Int,
         possession: OpenFigiHttpPossession,
     ): OpenFigiArchiveResult =
         finalize(
             requestBodyBytes = requestBodyBytes,
-            requestJobCount = requestJobCount,
             possession = possession,
         )
 
@@ -86,56 +84,49 @@ class OpenFigiForwardArchiveService(
         val requestBody = OpenFigiMappingRequestBody.encode(jobs)
         return archivePossessedResponse(
             requestBodyBytes = requestBody,
-            requestJobCount = jobs.size,
             possession = possession,
         )
     }
 
     private fun finalize(
         requestBodyBytes: ByteArray,
-        requestJobCount: Int,
         possession: OpenFigiHttpPossession,
     ): OpenFigiArchiveResult {
-        val requestKey = OpenFigiMappingClient.requestKey(requestBodyBytes)
         val requestPayloadHash = Sha256Hex.of(requestBodyBytes)
+        val requestKey = OpenFigiMappingClient.requestKeyForHash(requestPayloadHash)
         val archiveId = idGenerator()
+
+        if (possession.requestPayloadHash != requestPayloadHash) {
+            return commitLocalFailure(
+                archiveId = archiveId,
+                requestKey = requestKey,
+                possession = possession,
+                notes =
+                    "possession.requestPayloadHash mismatch vs request body bytes; " +
+                        "binding provenance forbidden",
+                failureNotes = "possession/requestPayloadHash mismatch",
+            )
+        }
+
+        val requestJobCount =
+            try {
+                OpenFigiMappingRequestBody.parseJobCount(requestBodyBytes)
+            } catch (e: Exception) {
+                return commitLocalFailure(
+                    archiveId = archiveId,
+                    requestKey = requestKey,
+                    possession = possession,
+                    notes = "malformed request body: ${e.message}",
+                    failureNotes = "malformed request body",
+                )
+            }
+
         val priors =
             manifestStore.findByRequestKey(
                 OpenFigiMappingClient.DOMAIN,
                 OpenFigiMappingClient.SOURCE,
                 requestKey,
             )
-
-        if (!requestKeyBodyHashMatches(requestKey, requestPayloadHash)) {
-            return commit(
-                ManifestRecord(
-                    archiveId = archiveId,
-                    domain = OpenFigiMappingClient.DOMAIN,
-                    source = OpenFigiMappingClient.SOURCE,
-                    requestKey = requestKey,
-                    attemptedAt = possession.attemptedAt,
-                    attemptFinishedAt = possession.attemptFinishedAt,
-                    fetchedAt = possession.fetchedAt,
-                    ingestedAt = clock(),
-                    rawPayloadHash = possession.bodyBytes?.let { Sha256Hex.of(it) },
-                    rawPayloadUri = null,
-                    contentType = possession.contentType,
-                    httpStatus = possession.httpStatus,
-                    transportStatus =
-                        if (possession.bodyFullyReceived) {
-                            TransportStatus.LOCAL_FAILURE
-                        } else {
-                            TransportStatus.TRANSPORT_FAILURE
-                        },
-                    observationStatus = ObservationStatus.LOCAL_ARCHIVE_FAILURE,
-                    eligibilityBoundaryAt = null,
-                    notes = "requestKey body hash mismatch vs requestPayloadHash; binding provenance forbidden",
-                ),
-                observedOk = false,
-                bindingReady = false,
-                failureNotes = "requestKey/requestPayloadHash mismatch",
-            )
-        }
 
         val requestPath =
             try {
@@ -147,27 +138,11 @@ class OpenFigiForwardArchiveService(
                     fileName = "$archiveId.request.raw",
                 )
             } catch (e: ArchiveIoException) {
-                return commit(
-                    ManifestRecord(
-                        archiveId = archiveId,
-                        domain = OpenFigiMappingClient.DOMAIN,
-                        source = OpenFigiMappingClient.SOURCE,
-                        requestKey = requestKey,
-                        attemptedAt = possession.attemptedAt,
-                        attemptFinishedAt = possession.attemptFinishedAt,
-                        fetchedAt = possession.fetchedAt,
-                        ingestedAt = clock(),
-                        rawPayloadHash = possession.bodyBytes?.let { Sha256Hex.of(it) },
-                        rawPayloadUri = null,
-                        contentType = possession.contentType,
-                        httpStatus = possession.httpStatus,
-                        transportStatus = TransportStatus.LOCAL_FAILURE,
-                        observationStatus = ObservationStatus.LOCAL_ARCHIVE_FAILURE,
-                        eligibilityBoundaryAt = null,
-                        notes = "request raw write failed: ${e.message}",
-                    ),
-                    observedOk = false,
-                    bindingReady = false,
+                return commitLocalFailure(
+                    archiveId = archiveId,
+                    requestKey = requestKey,
+                    possession = possession,
+                    notes = "request raw write failed: ${e.message}",
                     failureNotes = e.message,
                 )
             }
@@ -326,6 +301,46 @@ class OpenFigiForwardArchiveService(
         )
     }
 
+    private fun commitLocalFailure(
+        archiveId: String,
+        requestKey: String,
+        possession: OpenFigiHttpPossession,
+        notes: String,
+        failureNotes: String?,
+    ): OpenFigiArchiveResult {
+        // Never attach requestPayloadHash/Uri — not safely binding-ready.
+        val bodyReceived = possession.bodyFullyReceived
+        return commit(
+            ManifestRecord(
+                archiveId = archiveId,
+                domain = OpenFigiMappingClient.DOMAIN,
+                source = OpenFigiMappingClient.SOURCE,
+                requestKey = requestKey,
+                attemptedAt = possession.attemptedAt,
+                attemptFinishedAt = possession.attemptFinishedAt,
+                fetchedAt = if (bodyReceived) possession.fetchedAt else null,
+                ingestedAt = clock(),
+                rawPayloadHash =
+                    if (bodyReceived) possession.bodyBytes?.let { Sha256Hex.of(it) } else null,
+                rawPayloadUri = null,
+                contentType = possession.contentType,
+                httpStatus = possession.httpStatus,
+                transportStatus =
+                    if (bodyReceived) {
+                        TransportStatus.LOCAL_FAILURE
+                    } else {
+                        TransportStatus.TRANSPORT_FAILURE
+                    },
+                observationStatus = ObservationStatus.LOCAL_ARCHIVE_FAILURE,
+                eligibilityBoundaryAt = null,
+                notes = notes,
+            ),
+            observedOk = false,
+            bindingReady = false,
+            failureNotes = failureNotes,
+        )
+    }
+
     private fun commit(
         record: ManifestRecord,
         observedOk: Boolean,
@@ -406,14 +421,36 @@ class OpenFigiForwardArchiveService(
             .sorted()
     }
 
+    /**
+     * Audit-only: `*.request.raw` under request dir not referenced by any
+     * manifest `requestPayloadUri`. Never deletes, never auto-completes manifest,
+     * never promotes binding-ready / eligibility.
+     */
+    fun findOrphanRequestObjects(): List<Path> {
+        val requestFiles =
+            rawStore.listRawObjects(requestRelativeDir).filter {
+                it.fileName.toString().endsWith(".request.raw")
+            }
+        val referenced =
+            manifestStore
+                .readAll()
+                .mapNotNull { it.requestPayloadUri }
+                .map { Path.of(it).normalize().toAbsolutePath() }
+                .toSet()
+        return requestFiles
+            .map { it.toAbsolutePath().normalize() }
+            .filter { it !in referenced }
+            .sorted()
+    }
+
     companion object {
         fun requestKeyBodyHashMatches(
             requestKey: String,
             requestPayloadHash: String,
         ): Boolean {
-            val prefix = "POST|${OpenFigiMappingClient.MAPPING_PATH}|sha256:"
-            if (!requestKey.startsWith(prefix)) return false
-            return requestKey.removePrefix(prefix) == requestPayloadHash
+            if (!requestKey.startsWith(OpenFigiMappingClient.REQUEST_KEY_PREFIX)) return false
+            return requestKey.removePrefix(OpenFigiMappingClient.REQUEST_KEY_PREFIX) ==
+                requestPayloadHash
         }
     }
 }

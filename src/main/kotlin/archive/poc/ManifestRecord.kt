@@ -59,12 +59,36 @@ data class ManifestRecord(
             require(requestPayloadHash.isNotBlank()) { "requestPayloadHash blank" }
             require(!requestPayloadUri.isNullOrBlank()) { "requestPayloadUri blank" }
         }
+        validateOpenFigiRequestKeyHashInvariant()
         validateStatusInvariants()
+    }
+
+    private fun isOpenFigi(): Boolean =
+        domain == "SECURITY_MASTER" && source == "openfigi.v3.mapping"
+
+    /**
+     * OpenFIGI-only: when requestPayloadHash is present, requestKey must be
+     * `POST|/v3/mapping|sha256:{requestPayloadHash}` (exact hash match).
+     * Enforced on construction and [fromJsonLine] reload. Other domains unaffected.
+     */
+    private fun validateOpenFigiRequestKeyHashInvariant() {
+        if (!isOpenFigi()) return
+        if (requestPayloadHash == null) return
+        require(requestPayloadHash.isNotBlank()) { "OpenFIGI requestPayloadHash blank" }
+        val prefix = "POST|/v3/mapping|sha256:"
+        require(requestKey.startsWith(prefix)) {
+            "OpenFIGI requestKey must start with $prefix"
+        }
+        val keyHash = requestKey.removePrefix(prefix)
+        require(keyHash.isNotBlank()) { "OpenFIGI requestKey body hash blank" }
+        require(keyHash == requestPayloadHash) {
+            "OpenFIGI requestKey body hash mismatch vs requestPayloadHash"
+        }
     }
 
     /** OpenFIGI-only: request body provenance required for durable mapping statuses. */
     private fun requireOpenFigiRequestProvenance(statusLabel: String) {
-        if (domain != "SECURITY_MASTER" || source != "openfigi.v3.mapping") return
+        if (!isOpenFigi()) return
         require(!requestPayloadHash.isNullOrBlank()) {
             "$statusLabel OpenFIGI requires requestPayloadHash"
         }

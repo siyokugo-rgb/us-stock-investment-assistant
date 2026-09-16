@@ -1,5 +1,7 @@
 package archive.poc.openfigi
 
+import archive.poc.ArchiveJson
+import archive.poc.ArchiveValidationException
 import archive.poc.Sha256Hex
 import java.net.URI
 import java.net.http.HttpClient
@@ -41,6 +43,64 @@ object OpenFigiMappingRequestBody {
         return json.toByteArray(StandardCharsets.UTF_8)
     }
 
+    /**
+     * Strict parse of exact request body bytes for job-count derivation.
+     * Confirms top-level array of job objects with idType/idValue and optional exchCode.
+     * Not a production OpenFIGI client schema validator.
+     */
+    fun parseJobs(requestBodyBytes: ByteArray): List<OpenFigiMappingJob> {
+        val text =
+            try {
+                String(requestBodyBytes, StandardCharsets.UTF_8)
+            } catch (e: Exception) {
+                throw ArchiveValidationException("OpenFIGI request body is not UTF-8", e)
+            }
+        val root =
+            try {
+                ArchiveJson.parse(text)
+            } catch (e: Exception) {
+                throw ArchiveValidationException("OpenFIGI request body JSON parse failed: ${e.message}", e)
+            }
+        val arr =
+            root as? ArchiveJson.Arr
+                ?: throw ArchiveValidationException("OpenFIGI request body must be a top-level JSON array")
+        if (arr.items.isEmpty()) {
+            throw ArchiveValidationException("OpenFIGI request body job array must not be empty")
+        }
+        if (arr.items.size > 10) {
+            throw ArchiveValidationException(
+                "OpenFIGI without API key allows at most 10 jobs/request; got ${arr.items.size}",
+            )
+        }
+        return arr.items.mapIndexed { index, item ->
+            val obj =
+                item as? ArchiveJson.Obj
+                    ?: throw ArchiveValidationException("OpenFIGI request job[$index] must be an object")
+            val idType =
+                (obj.map["idType"] as? ArchiveJson.Str)?.value?.takeIf { it.isNotBlank() }
+                    ?: throw ArchiveValidationException("OpenFIGI request job[$index] missing non-blank idType")
+            val idValue =
+                (obj.map["idValue"] as? ArchiveJson.Str)?.value?.takeIf { it.isNotBlank() }
+                    ?: throw ArchiveValidationException("OpenFIGI request job[$index] missing non-blank idValue")
+            val exchCode =
+                when (val exch = obj.map["exchCode"]) {
+                    null, is ArchiveJson.Null -> null
+                    is ArchiveJson.Str ->
+                        exch.value.takeIf { it.isNotBlank() }
+                            ?: throw ArchiveValidationException(
+                                "OpenFIGI request job[$index] exchCode must be non-blank when present",
+                            )
+                    else ->
+                        throw ArchiveValidationException(
+                            "OpenFIGI request job[$index] exchCode must be a string when present",
+                        )
+                }
+            OpenFigiMappingJob(idType = idType, idValue = idValue, exchCode = exchCode)
+        }
+    }
+
+    fun parseJobCount(requestBodyBytes: ByteArray): Int = parseJobs(requestBodyBytes).size
+
     private fun quote(value: String): String =
         buildString {
             append('"')
@@ -61,6 +121,8 @@ object OpenFigiMappingRequestBody {
 /**
  * HTTP possession result.
  * [fetchedAt] set only when response body bytes were fully received (independent of HTTP status).
+ * [requestPayloadHash] is SHA-256 of the exact request body bytes bound at attempt time
+ * (before HTTP send), retained for success / HTTP failure / transport failure alike.
  */
 data class OpenFigiHttpPossession(
     val attemptedAt: Instant,
@@ -70,8 +132,13 @@ data class OpenFigiHttpPossession(
     val contentType: String?,
     val bodyBytes: ByteArray?,
     val transportFailureMessage: String?,
+    val requestPayloadHash: String,
 ) {
     val bodyFullyReceived: Boolean get() = bodyBytes != null && fetchedAt != null
+
+    init {
+        require(requestPayloadHash.isNotBlank()) { "requestPayloadHash blank" }
+    }
 }
 
 /**
@@ -96,6 +163,7 @@ class OpenFigiMappingClient(
     }
 
     fun executeMapping(requestBodyBytes: ByteArray): OpenFigiHttpPossession {
+        val requestPayloadHash = Sha256Hex.of(requestBodyBytes)
         val attemptedAt = clock()
         val endpoint = "${baseUrl.trimEnd('/')}$MAPPING_PATH"
         val builder =
@@ -119,6 +187,7 @@ class OpenFigiMappingClient(
                 contentType = response.headers().firstValue("Content-Type").orElse(null),
                 bodyBytes = body,
                 transportFailureMessage = null,
+                requestPayloadHash = requestPayloadHash,
             )
         } catch (e: Exception) {
             val attemptFinishedAt = clock()
@@ -131,6 +200,7 @@ class OpenFigiMappingClient(
                 bodyBytes = null,
                 transportFailureMessage =
                     e::class.java.simpleName + ": " + (e.message ?: "transport failure"),
+                requestPayloadHash = requestPayloadHash,
             )
         }
     }
@@ -142,9 +212,15 @@ class OpenFigiMappingClient(
         const val ENV_API_KEY = "OPENFIGI_API_KEY"
         const val SOURCE = "openfigi.v3.mapping"
         const val DOMAIN = "SECURITY_MASTER"
+        const val REQUEST_KEY_PREFIX = "POST|$MAPPING_PATH|sha256:"
 
         fun requestKey(requestBodyBytes: ByteArray): String =
-            "POST|$MAPPING_PATH|sha256:${Sha256Hex.of(requestBodyBytes)}"
+            requestKeyForHash(Sha256Hex.of(requestBodyBytes))
+
+        fun requestKeyForHash(requestPayloadHash: String): String {
+            require(requestPayloadHash.isNotBlank()) { "requestPayloadHash blank" }
+            return "$REQUEST_KEY_PREFIX$requestPayloadHash"
+        }
 
         fun fromEnvironment(
             env: Map<String, String> = System.getenv(),

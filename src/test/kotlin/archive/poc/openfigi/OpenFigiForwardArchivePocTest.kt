@@ -56,7 +56,11 @@ class OpenFigiForwardArchivePocTest {
         status: Int,
         body: ByteArray?,
         transportMessage: String? = null,
+        jobs: List<OpenFigiMappingJob> = ibmJob,
+        requestBodyBytes: ByteArray? = null,
     ): OpenFigiHttpPossession {
+        val requestBytes = requestBodyBytes ?: OpenFigiMappingRequestBody.encode(jobs)
+        val requestPayloadHash = Sha256Hex.of(requestBytes)
         val a = nextInstant()
         val b = nextInstant()
         return if (body == null) {
@@ -68,6 +72,7 @@ class OpenFigiForwardArchivePocTest {
                 contentType = null,
                 bodyBytes = null,
                 transportFailureMessage = transportMessage ?: "SimulatedTransportFailure",
+                requestPayloadHash = requestPayloadHash,
             )
         } else {
             OpenFigiHttpPossession(
@@ -78,6 +83,7 @@ class OpenFigiForwardArchivePocTest {
                 contentType = "application/json",
                 bodyBytes = body,
                 transportFailureMessage = null,
+                requestPayloadHash = requestPayloadHash,
             )
         }
     }
@@ -312,7 +318,7 @@ class OpenFigiForwardArchivePocTest {
         val body =
             """[{"warning":"No identifier found."}]""".toByteArray(StandardCharsets.UTF_8)
         val jobs = listOf(OpenFigiMappingJob(idType = "TICKER", idValue = "IBM", exchCode = "US"))
-        val result = service().archivePossessedResponse(jobs, possession(200, body))
+        val result = service().archivePossessedResponse(jobs, possession(200, body, jobs = jobs))
         assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
         assertFalse(result.observedIngestSucceeded)
         assertNull(result.record.eligibilityBoundaryAt)
@@ -394,7 +400,7 @@ class OpenFigiForwardArchivePocTest {
         val body =
             """[{"data":[{"figi":"BBG000BLNNH6"}]},{"data":[{"figi":"BBG000B9XRY4"}]}]"""
                 .toByteArray(StandardCharsets.UTF_8)
-        val result = service().archivePossessedResponse(jobs, possession(200, body))
+        val result = service().archivePossessedResponse(jobs, possession(200, body, jobs = jobs))
         assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
         assertNull(result.record.externalIdentifier)
     }
@@ -693,7 +699,7 @@ class OpenFigiForwardArchivePocTest {
                 archiveId = "a",
                 domain = "SECURITY_MASTER",
                 source = "openfigi.v3.mapping",
-                requestKey = "k",
+                requestKey = "POST|/v3/mapping|sha256:reqhash",
                 externalIdentifier = "BBG000BLNNH6",
                 externalIdentifierNamespace = null,
                 attemptedAt = t0,
@@ -715,7 +721,7 @@ class OpenFigiForwardArchivePocTest {
                 archiveId = "b",
                 domain = "SECURITY_MASTER",
                 source = "openfigi.v3.mapping",
-                requestKey = "k",
+                requestKey = "POST|/v3/mapping|sha256:reqhash",
                 externalIdentifier = null,
                 externalIdentifierNamespace = "figi",
                 attemptedAt = t0,
@@ -738,7 +744,7 @@ class OpenFigiForwardArchivePocTest {
     fun exactSentRequestBytesAreStoredSeparatelyFromResponseRaw() {
         val jobs = listOf(OpenFigiMappingJob(idType = "TICKER", idValue = "IBM", exchCode = "US"))
         val requestBytes = OpenFigiMappingRequestBody.encode(jobs)
-        val result = service().archivePossessedResponse(requestBytes, jobs.size, possession(200, validBody.copyOf()))
+        val result = service().archivePossessedResponse(requestBytes, possession(200, validBody.copyOf(), requestBodyBytes = requestBytes))
         assertTrue(result.observedIngestSucceeded)
         assertTrue(result.bindingProvenanceReady)
         assertNotNull(result.record.requestPayloadUri)
@@ -755,7 +761,7 @@ class OpenFigiForwardArchivePocTest {
     fun requestPayloadHashMatchesExactSentBytesSha256() {
         val requestBytes = OpenFigiMappingRequestBody.encode(ibmJob)
         val result =
-            service().archivePossessedResponse(requestBytes, ibmJob.size, possession(200, validBody.copyOf()))
+            service().archivePossessedResponse(requestBytes, possession(200, validBody.copyOf(), requestBodyBytes = requestBytes))
         assertEquals(Sha256Hex.of(requestBytes), result.record.requestPayloadHash)
         val onDisk = Files.readAllBytes(Path.of(result.record.requestPayloadUri!!))
         assertEquals(Sha256Hex.of(onDisk), result.record.requestPayloadHash)
@@ -767,8 +773,8 @@ class OpenFigiForwardArchivePocTest {
         val spaced = """[{ "idType":"TICKER","idValue":"IBM"}]""".toByteArray(StandardCharsets.UTF_8)
         assertNotEquals(Sha256Hex.of(compact), Sha256Hex.of(spaced))
         val svc = service()
-        val r1 = svc.archivePossessedResponse(compact, 1, possession(200, validBody.copyOf()))
-        val r2 = svc.archivePossessedResponse(spaced, 1, possession(200, validBody.copyOf()))
+        val r1 = svc.archivePossessedResponse(compact, possession(200, validBody.copyOf(), requestBodyBytes = compact))
+        val r2 = svc.archivePossessedResponse(spaced, possession(200, validBody.copyOf(), requestBodyBytes = spaced))
         assertNotEquals(r1.record.requestPayloadHash, r2.record.requestPayloadHash)
         assertNotEquals(r1.record.requestKey, r2.record.requestKey)
     }
@@ -777,7 +783,7 @@ class OpenFigiForwardArchivePocTest {
     fun requestKeyBodyHashMatchesRequestPayloadHash() {
         val requestBytes = OpenFigiMappingRequestBody.encode(ibmJob)
         val result =
-            service().archivePossessedResponse(requestBytes, ibmJob.size, possession(200, validBody.copyOf()))
+            service().archivePossessedResponse(requestBytes, possession(200, validBody.copyOf(), requestBodyBytes = requestBytes))
         assertTrue(
             OpenFigiForwardArchiveService.requestKeyBodyHashMatches(
                 result.record.requestKey,
@@ -806,7 +812,7 @@ class OpenFigiForwardArchivePocTest {
                 clock = { nextInstant() },
                 idGenerator = { fixedId },
             )
-        val result = fixed.archivePossessedResponse(requestBytes, ibmJob.size, possession(200, validBody.copyOf()))
+        val result = fixed.archivePossessedResponse(requestBytes, possession(200, validBody.copyOf(), requestBodyBytes = requestBytes))
         assertFalse(result.observedIngestSucceeded)
         assertFalse(result.bindingProvenanceReady)
         assertEquals(ObservationStatus.LOCAL_ARCHIVE_FAILURE, result.record.observationStatus)
@@ -832,7 +838,7 @@ class OpenFigiForwardArchivePocTest {
                 clock = { nextInstant() },
                 idGenerator = { "req-fail-1" },
             )
-        val result = svc.archivePossessedResponse(requestBytes, ibmJob.size, possession(200, validBody.copyOf()))
+        val result = svc.archivePossessedResponse(requestBytes, possession(200, validBody.copyOf(), requestBodyBytes = requestBytes))
         assertFalse(result.observedIngestSucceeded)
         assertFalse(result.bindingProvenanceReady)
         assertEquals(ObservationStatus.LOCAL_ARCHIVE_FAILURE, result.record.observationStatus)
@@ -855,7 +861,7 @@ class OpenFigiForwardArchivePocTest {
                 clock = { nextInstant() },
                 idGenerator = { fixedId },
             )
-        val result = fixed.archivePossessedResponse(requestBytes, ibmJob.size, possession(200, validBody.copyOf()))
+        val result = fixed.archivePossessedResponse(requestBytes, possession(200, validBody.copyOf(), requestBodyBytes = requestBytes))
         assertFalse(result.observedIngestSucceeded)
         assertEquals(ObservationStatus.LOCAL_ARCHIVE_FAILURE, result.record.observationStatus)
         assertTrue(result.bindingProvenanceReady)
@@ -873,7 +879,7 @@ class OpenFigiForwardArchivePocTest {
         val jobs = listOf(OpenFigiMappingJob(idType = "TICKER", idValue = "IBM", exchCode = "US"))
         val requestBytes = OpenFigiMappingRequestBody.encode(jobs)
         val result =
-            service().archivePossessedResponse(requestBytes, jobs.size, possession(200, validBody.copyOf()))
+            service().archivePossessedResponse(requestBytes, possession(200, validBody.copyOf(), requestBodyBytes = requestBytes))
         val requestOnDisk = String(Files.readAllBytes(Path.of(result.record.requestPayloadUri!!)), StandardCharsets.UTF_8)
         val json = result.record.toJsonLine()
         for (hay in listOf(requestOnDisk, json, result.record.requestKey, String(requestBytes, StandardCharsets.UTF_8))) {
@@ -890,7 +896,7 @@ class OpenFigiForwardArchivePocTest {
         val jobs = listOf(OpenFigiMappingJob(idType = "TICKER", idValue = "IBM", exchCode = "US"))
         val requestBytes = OpenFigiMappingRequestBody.encode(jobs)
         val result =
-            service().archivePossessedResponse(requestBytes, jobs.size, possession(200, validBody.copyOf()))
+            service().archivePossessedResponse(requestBytes, possession(200, validBody.copyOf(), requestBodyBytes = requestBytes))
         val raw = String(Files.readAllBytes(Path.of(result.record.requestPayloadUri!!)), StandardCharsets.UTF_8)
         assertTrue(raw.contains("\"idType\":\"TICKER\""))
         assertTrue(raw.contains("\"idValue\":\"IBM\""))
@@ -964,10 +970,7 @@ class OpenFigiForwardArchivePocTest {
     fun transportFailureStillStoresRequestProvenanceSeparatelyFromObserved() {
         val requestBytes = OpenFigiMappingRequestBody.encode(ibmJob)
         val result =
-            service().archivePossessedResponse(
-                requestBytes,
-                ibmJob.size,
-                possession(status = 0, body = null, transportMessage = "ConnectException"),
+            service().archivePossessedResponse(requestBytes, possession(status = 0, body = null, transportMessage = "ConnectException", requestBodyBytes = requestBytes),
             )
         assertFalse(result.observedIngestSucceeded)
         assertEquals(ObservationStatus.PROVIDER_FAILURE, result.record.observationStatus)
@@ -979,5 +982,234 @@ class OpenFigiForwardArchivePocTest {
         assertTrue(
             Files.readAllBytes(Path.of(result.record.requestPayloadUri!!)).contentEquals(requestBytes),
         )
+    }
+
+    @Test
+    fun possessionRequestPayloadHashMatchesExactRequestBytes() {
+        val requestBytes = OpenFigiMappingRequestBody.encode(ibmJob)
+        val p = possession(200, validBody.copyOf(), requestBodyBytes = requestBytes)
+        assertEquals(Sha256Hex.of(requestBytes), p.requestPayloadHash)
+        val result = service().archivePossessedResponse(requestBytes, p)
+        assertTrue(result.bindingProvenanceReady)
+        assertEquals(p.requestPayloadHash, result.record.requestPayloadHash)
+    }
+
+    @Test
+    fun mismatchedPossessionAndRequestBytesIsFailClosedNotBindingReady() {
+        val requestA = OpenFigiMappingRequestBody.encode(ibmJob)
+        val requestB =
+            OpenFigiMappingRequestBody.encode(
+                listOf(OpenFigiMappingJob(idType = "TICKER", idValue = "IBM", exchCode = "US")),
+            )
+        assertNotEquals(Sha256Hex.of(requestA), Sha256Hex.of(requestB))
+        val possessionB = possession(200, validBody.copyOf(), requestBodyBytes = requestB)
+        val result = service().archivePossessedResponse(requestA, possessionB)
+        assertFalse(result.observedIngestSucceeded)
+        assertFalse(result.bindingProvenanceReady)
+        assertEquals(ObservationStatus.LOCAL_ARCHIVE_FAILURE, result.record.observationStatus)
+        assertNull(result.record.requestPayloadHash)
+        assertNull(result.record.requestPayloadUri)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertTrue(result.failureNotes!!.contains("mismatch", ignoreCase = true))
+    }
+
+    @Test
+    fun transportFailurePossessionRetainsRequestPayloadHash() {
+        val requestBytes = OpenFigiMappingRequestBody.encode(ibmJob)
+        val expected = Sha256Hex.of(requestBytes)
+        val p =
+            possession(
+                status = 0,
+                body = null,
+                transportMessage = "ConnectException",
+                requestBodyBytes = requestBytes,
+            )
+        assertEquals(expected, p.requestPayloadHash)
+        assertNull(p.fetchedAt)
+        assertNull(p.bodyBytes)
+    }
+
+    @Test
+    fun liveClientBindsRequestPayloadHashBeforeSendIncludingTransportFailure() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.executor = Executors.newCachedThreadPool()
+        server.createContext("/v3/mapping") { exchange ->
+            exchange.close()
+        }
+        server.start()
+        try {
+            val requestBytes = OpenFigiMappingRequestBody.encode(ibmJob)
+            val expected = Sha256Hex.of(requestBytes)
+            val client =
+                OpenFigiMappingClient(
+                    baseUrl = "http://127.0.0.1:${server.address.port}",
+                    httpClient =
+                        HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofMillis(200))
+                            .build(),
+                    requestTimeout = Duration.ofMillis(200),
+                    clock = { Instant.parse("2026-09-15T06:00:00Z") },
+                )
+            // Abrupt close may surface as transport failure or truncated response depending on timing;
+            // either way possession must retain the pre-send request hash.
+            val possession = client.executeMapping(requestBytes)
+            assertEquals(expected, possession.requestPayloadHash)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun malformedRequestBodyForbidsBindingReady() {
+        val bad = """{"not":"array"}""".toByteArray(StandardCharsets.UTF_8)
+        val result =
+            service().archivePossessedResponse(
+                bad,
+                possession(200, validBody.copyOf(), requestBodyBytes = bad),
+            )
+        assertFalse(result.observedIngestSucceeded)
+        assertFalse(result.bindingProvenanceReady)
+        assertEquals(ObservationStatus.LOCAL_ARCHIVE_FAILURE, result.record.observationStatus)
+        assertNull(result.record.requestPayloadHash)
+        assertNull(result.record.requestPayloadUri)
+        assertTrue(result.failureNotes!!.contains("malformed", ignoreCase = true))
+    }
+
+    @Test
+    fun requestBodyMissingIdValueIsMalformedFailClosed() {
+        val bad = """[{"idType":"TICKER"}]""".toByteArray(StandardCharsets.UTF_8)
+        val result =
+            service().archivePossessedResponse(
+                bad,
+                possession(200, validBody.copyOf(), requestBodyBytes = bad),
+            )
+        assertFalse(result.bindingProvenanceReady)
+        assertEquals(ObservationStatus.LOCAL_ARCHIVE_FAILURE, result.record.observationStatus)
+    }
+
+    @Test
+    fun manifestRequestKeyHashMismatchRejectedOnFromJsonLine() {
+        val t0 = Instant.parse("2026-09-15T07:00:00Z")
+        val t1 = Instant.parse("2026-09-15T07:00:01Z")
+        val badLine =
+            """{"archiveId":"a","domain":"SECURITY_MASTER","source":"openfigi.v3.mapping","requestKey":"POST|/v3/mapping|sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","observedFields":[],"attemptedAt":"$t0","attemptFinishedAt":"$t1","fetchedAt":"$t1","ingestedAt":"$t1","rawPayloadHash":"abc","rawPayloadUri":"u","requestPayloadHash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","requestPayloadUri":"req","httpStatus":200,"transportStatus":"HTTP_RESPONSE","relatedPriorObservationIds":[],"observationStatus":"OBSERVED","eligibilityBoundaryAt":"$t1"}"""
+        kotlin.test.assertFailsWith<archive.poc.ArchiveValidationException> {
+            ManifestRecord.fromJsonLine(badLine)
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            ManifestRecord(
+                archiveId = "a",
+                domain = "SECURITY_MASTER",
+                source = "openfigi.v3.mapping",
+                requestKey = "WRONG|/v3/mapping|sha256:abc",
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = t1,
+                ingestedAt = t1,
+                rawPayloadHash = "abc",
+                rawPayloadUri = "u",
+                requestPayloadHash = "abc",
+                requestPayloadUri = "req",
+                httpStatus = 200,
+                transportStatus = TransportStatus.HTTP_RESPONSE,
+                observationStatus = ObservationStatus.OBSERVED,
+                eligibilityBoundaryAt = t1,
+            )
+        }
+    }
+
+    @Test
+    fun validOpenFigiManifestRoundTripPassesFromJsonLine() {
+        val result = service().archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertTrue(result.observedIngestSucceeded)
+        val reloaded = ManifestRecord.fromJsonLine(result.record.toJsonLine())
+        assertEquals(result.record.requestPayloadHash, reloaded.requestPayloadHash)
+        assertEquals(result.record.requestKey, reloaded.requestKey)
+        assertEquals(result.record.requestPayloadUri, reloaded.requestPayloadUri)
+        assertEquals(ObservationStatus.OBSERVED, reloaded.observationStatus)
+    }
+
+    @Test
+    fun referencedRequestRawIsNotOrphan() {
+        val svc = service()
+        val result = svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        assertTrue(result.bindingProvenanceReady)
+        assertTrue(svc.findOrphanRequestObjects().isEmpty())
+    }
+
+    @Test
+    fun unreferencedRequestRawIsDetectedAsOrphan() {
+        val svc = service()
+        assertTrue(svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf())).bindingProvenanceReady)
+        val requestDir =
+            root.resolve(OpenFigiMappingClient.DOMAIN).resolve(OpenFigiMappingClient.SOURCE).resolve("request")
+        Files.createDirectories(requestDir)
+        val orphanPath = requestDir.resolve("manual-orphan.request.raw")
+        Files.writeString(orphanPath, """[{"idType":"TICKER","idValue":"ORPHAN"}]""")
+        val orphans = svc.findOrphanRequestObjects()
+        assertEquals(1, orphans.size)
+        assertEquals(orphanPath.toAbsolutePath().normalize(), orphans.single())
+    }
+
+    @Test
+    fun requestLeftAfterManifestAppendFailureIsDetectableNextTime() {
+        val svc = service()
+        assertTrue(svc.archivePossessedResponse(ibmJob, possession(200, validBody.copyOf())).observedIngestSucceeded)
+        val residualBytes = OpenFigiMappingRequestBody.encode(ibmJob)
+        val residualHash = Sha256Hex.of(residualBytes)
+        val residualPath =
+            archive.poc.ImmutableRawStore(root).writeImmutable(
+                relativeDir = "${OpenFigiMappingClient.DOMAIN}/${OpenFigiMappingClient.SOURCE}/request",
+                archiveId = "orphan-req-after-append-fail",
+                payload = residualBytes,
+                expectedSha256Hex = residualHash,
+                fileName = "orphan-req-after-append-fail.request.raw",
+            )
+        val detectSvc = service()
+        val orphans = detectSvc.findOrphanRequestObjects()
+        assertTrue(
+            orphans.any { it == residualPath.toAbsolutePath().normalize() },
+            "orphans=$orphans residual=$residualPath",
+        )
+        // Orphan itself must not grant binding-ready / eligibility / coverage.
+        assertEquals(1, detectSvc.currentCoverage().observedCount)
+        assertFalse(orphans.isEmpty())
+    }
+
+    @Test
+    fun alphaVantageManifestWithRequestFieldsStillOptionalRegression() {
+        val t0 = Instant.parse("2026-09-15T07:20:00Z")
+        val t1 = Instant.parse("2026-09-15T07:20:01Z")
+        val without =
+            ManifestRecord(
+                archiveId = "av-2",
+                domain = "PRICE",
+                source = "alphavantage.time_series_daily.raw",
+                requestKey = "GET|query|symbol=IBM",
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = t1,
+                ingestedAt = t1,
+                rawPayloadHash = "abc",
+                rawPayloadUri = "u",
+                httpStatus = 200,
+                transportStatus = TransportStatus.HTTP_RESPONSE,
+                observationStatus = ObservationStatus.OBSERVED,
+                eligibilityBoundaryAt = t1,
+            )
+        assertNull(without.requestPayloadHash)
+        val reloaded = ManifestRecord.fromJsonLine(without.toJsonLine())
+        assertNull(reloaded.requestPayloadHash)
+        assertEquals(ObservationStatus.OBSERVED, reloaded.observationStatus)
+    }
+
+    @Test
+    fun integrityFixesDoNotInventSecurityIdKnownAtOrDailyPrice() {
+        val result = service().archivePossessedResponse(ibmJob, possession(200, validBody.copyOf()))
+        val line = result.record.toJsonLine()
+        assertFalse(line.contains("securityId", ignoreCase = true))
+        assertFalse(line.contains("knownAt"))
+        assertFalse(line.contains("DailyPrice"))
+        assertFalse(line.contains("JoinCandidate"))
     }
 }

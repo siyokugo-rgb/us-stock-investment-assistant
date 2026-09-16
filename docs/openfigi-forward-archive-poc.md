@@ -73,9 +73,15 @@ Both null or both present. Required for OpenFIGI `OBSERVED` / `REJECTED_VALIDATI
 - `observedIngestSucceeded` / `OBSERVED` = response path fully committed
 - `bindingProvenanceReady` = secret-free request bytes immutably stored + hash aligns with `requestKey`
 
+`OpenFigiHttpPossession.requestPayloadHash` is bound **before HTTP send** and must equal `SHA-256(requestBodyBytes)` at archive time. Mismatched possession/request bytes → Fail-Closed (`LOCAL_ARCHIVE_FAILURE`, not binding-ready, no OBSERVED). Job count is strict-parsed from request body bytes (caller-supplied count removed).
+
 Future `ProviderSymbolBindingEvidence` may reference `mappingArchiveId` / `mappingRequestKey` / `requestPayloadHash` / `requestPayloadUri`. Symbol string-match alone remains FAIL. This PoC does **not** emit binding evidence or join Alpha Vantage symbols.
 
 Request write failure / hash mismatch / path collision / manifest append failure → not binding-ready (`LOCAL_ARCHIVE_FAILURE` when local). Response OBSERVED without request provenance is invariant-forbidden for OpenFIGI.
+
+OpenFIGI `ManifestRecord` invariant (construction + `fromJsonLine`): when `requestPayloadHash` is present, `requestKey` must be exactly `POST|/v3/mapping|sha256:{requestPayloadHash}`.
+
+Audit-only: `findOrphanRequestObjects()` lists `request/*.request.raw` not referenced by any `requestPayloadUri` — never deletes, never auto-completes manifest, never promotes binding-ready/eligibility.
 ---
 
 ## Timestamps
