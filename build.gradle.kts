@@ -118,3 +118,13 @@ tasks.register<JavaExec>("massiveTickerOverviewForwardArchivePoc") {
     mainClass.set("archive.poc.massive.MassiveTickerOverviewLiveArchivePocKt")
     isIgnoreExitValue = true
 }
+
+// Live Massive All Tickers forward archive PoC. Requires MASSIVE_API_KEY else LIVE_UNVERIFIED.
+tasks.register<JavaExec>("massiveAllTickersForwardArchivePoc") {
+    group = "verification"
+    description =
+        "Run live Massive All Tickers forward self-archive PoC (Fail-Closed; currency_symbol raw only; no DailyPrice/SecurityId/pagination follow)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("archive.poc.massive.MassiveAllTickersLiveArchivePocKt")
+    isIgnoreExitValue = true
+}

@@ -1,0 +1,22 @@
+{
+  "count": 1,
+  "request_id": "synthetic-all-tickers-request-id",
+  "results": [
+    {
+      "active": true,
+      "cik": "0000320193",
+      "composite_figi": "BBG000B9XRY4",
+      "currency_name": "usd",
+      "currency_symbol": "USD",
+      "last_updated_utc": "2026-09-15T00:00:00Z",
+      "locale": "us",
+      "market": "stocks",
+      "name": "Apple Inc.",
+      "primary_exchange": "XNAS",
+      "share_class_figi": "BBG001S5N8V8",
+      "ticker": "AAPL",
+      "type": "CS"
+    }
+  ],
+  "status": "OK"
+}
