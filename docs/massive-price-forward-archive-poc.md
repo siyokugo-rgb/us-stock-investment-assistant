@@ -215,8 +215,8 @@ Synthetic coverage（`MassiveDailyAggsForwardArchivePocTest`）:
 
 ## Next
 
-1. Massive Ticker Overview forward archive（currency_name / primary_exchange / FIGI）— **別 source**
-2. 同一 vendor 内の price↔reference provenance join Gate（ticker alone 禁止）
+1. Massive Ticker Overview forward archive（currency_name / primary_exchange / FIGI）— **別 source**（PR #28 MERGED）
+2. Same-vendor PRICE↔Overview join Gate — [`massive-price-overview-join-gate.md`](massive-price-overview-join-gate.md)
 3. AV archive は維持
 
 ---
