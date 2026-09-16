@@ -10,6 +10,13 @@ data class MassiveTickerOverviewValidationOutcome(
     val okForObserved: Boolean,
     val observedFields: List<String>,
     val notes: String?,
+    /** Present only when [okForObserved]; raw reference evidence — never domain adoption. */
+    val validatedTicker: String? = null,
+    val currencyName: String? = null,
+    val primaryExchange: String? = null,
+    val compositeFigi: String? = null,
+    val shareClassFigi: String? = null,
+    val active: Boolean? = null,
 )
 
 /**
@@ -99,35 +106,51 @@ object MassiveTickerOverviewArchiveValidator {
         optionalNonBlankString(results, "type")?.let { fields += "type" }
             ?: optionalRejectIfWrongType(results, "type", expectString = true)?.let { return it }
 
-        when (val active = results.map["active"]) {
+        when (val activeNode = results.map["active"]) {
             null, is ArchiveJson.Null -> Unit
             is ArchiveJson.Bool -> fields += "active"
             else -> return reject("results.active must be boolean when present")
         }
 
-        optionalNonBlankString(results, "primary_exchange")?.let { fields += "primary_exchange" }
-            ?: optionalRejectIfWrongType(results, "primary_exchange", expectString = true)?.let {
-                return it
-            }
-            ?: blankStringReject(results, "primary_exchange")?.let { return it }
+        val primaryExchange =
+            optionalNonBlankString(results, "primary_exchange")?.also { fields += "primary_exchange" }
+                ?: run {
+                    optionalRejectIfWrongType(results, "primary_exchange", expectString = true)?.let {
+                        return it
+                    }
+                    blankStringReject(results, "primary_exchange")?.let { return it }
+                    null
+                }
 
-        optionalNonBlankString(results, "currency_name")?.let { fields += "currency_name" }
-            ?: optionalRejectIfWrongType(results, "currency_name", expectString = true)?.let {
-                return it
-            }
-            ?: blankStringReject(results, "currency_name")?.let { return it }
+        val currencyName =
+            optionalNonBlankString(results, "currency_name")?.also { fields += "currency_name" }
+                ?: run {
+                    optionalRejectIfWrongType(results, "currency_name", expectString = true)?.let {
+                        return it
+                    }
+                    blankStringReject(results, "currency_name")?.let { return it }
+                    null
+                }
 
-        optionalNonBlankString(results, "composite_figi")?.let { fields += "composite_figi" }
-            ?: optionalRejectIfWrongType(results, "composite_figi", expectString = true)?.let {
-                return it
-            }
-            ?: blankStringReject(results, "composite_figi")?.let { return it }
+        val compositeFigi =
+            optionalNonBlankString(results, "composite_figi")?.also { fields += "composite_figi" }
+                ?: run {
+                    optionalRejectIfWrongType(results, "composite_figi", expectString = true)?.let {
+                        return it
+                    }
+                    blankStringReject(results, "composite_figi")?.let { return it }
+                    null
+                }
 
-        optionalNonBlankString(results, "share_class_figi")?.let { fields += "share_class_figi" }
-            ?: optionalRejectIfWrongType(results, "share_class_figi", expectString = true)?.let {
-                return it
-            }
-            ?: blankStringReject(results, "share_class_figi")?.let { return it }
+        val shareClassFigi =
+            optionalNonBlankString(results, "share_class_figi")?.also { fields += "share_class_figi" }
+                ?: run {
+                    optionalRejectIfWrongType(results, "share_class_figi", expectString = true)?.let {
+                        return it
+                    }
+                    blankStringReject(results, "share_class_figi")?.let { return it }
+                    null
+                }
 
         optionalNonBlankString(results, "cik")?.let { fields += "cik" }
             ?: optionalRejectIfWrongType(results, "cik", expectString = true)?.let { return it }
@@ -167,6 +190,12 @@ object MassiveTickerOverviewArchiveValidator {
         if (root.map.containsKey("request_id")) fields += "request_id"
         if (root.map.containsKey("count")) fields += "count"
 
+        val activeValue =
+            when (val a = results.map["active"]) {
+                is ArchiveJson.Bool -> a.value
+                else -> null
+            }
+
         return MassiveTickerOverviewValidationOutcome(
             okForObserved = true,
             observedFields = fields.toList().sorted(),
@@ -179,6 +208,12 @@ object MassiveTickerOverviewArchiveValidator {
                     "list_date/delisted_utc/last_updated_utc≠knownAt/eligibility; " +
                     "externalIdentifier not auto-set; " +
                     "PRICE↔Overview join not performed",
+            validatedTicker = ticker,
+            currencyName = currencyName,
+            primaryExchange = primaryExchange,
+            compositeFigi = compositeFigi,
+            shareClassFigi = shareClassFigi,
+            active = activeValue,
         )
     }
 
