@@ -77,7 +77,7 @@ Both null or both present. Required for OpenFIGI `OBSERVED` / `REJECTED_VALIDATI
 
 Request construction (endpoint / URI / headers including API key / POST / send) shares one sanitized try/catch. `transportFailureMessage` is **exception class simpleName only** — never `e.message`, URI, API key, or header values.
 
-Future `ProviderSymbolBindingEvidence` may reference `mappingArchiveId` / `mappingRequestKey` / `requestPayloadHash` / `requestPayloadUri`. Symbol string-match alone remains FAIL. This PoC does **not** emit binding evidence or join Alpha Vantage symbols.
+Future `ProviderSymbolBindingEvidence` may reference `mappingArchiveId` / `mappingRequestKey` / `requestPayloadHash` / `requestPayloadUri`. Symbol string-match alone remains FAIL. Binding candidate derivation lives in `archive.poc.binding` and still does **not** mean Security identity resolved / SecurityId / DailyPrice.
 
 Request write failure / hash mismatch / path collision / manifest append failure → not binding-ready (`LOCAL_ARCHIVE_FAILURE` when local). Response OBSERVED without request provenance is invariant-forbidden for OpenFIGI.
 
