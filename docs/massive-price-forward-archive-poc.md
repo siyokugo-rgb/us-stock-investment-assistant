@@ -157,7 +157,7 @@ Validation 成功 ≠ DailyPrice 生成。
 任意。`MASSIVE_API_KEY` が無ければ **LIVE_UNVERIFIED**（mock 禁止・key 生成禁止）。
 
 ```text
-./gradlew --no-daemon -q runMassivePriceArchivePoc
+./gradlew --no-daemon -q massiveDailyAggsForwardArchivePoc
 ```
 
 Default 取得窓（live smoke 専用；DailyPrice.tradingDate / market calendar には使わない）:
