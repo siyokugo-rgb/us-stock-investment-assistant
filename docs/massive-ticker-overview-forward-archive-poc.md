@@ -246,7 +246,7 @@ Validation 成功 ≠ domain 採用。
 
 ## Next
 
-1. **Massive PRICE ↔ Massive Ticker Overview** 同一 vendor provenance join Gate  
+1. **Massive PRICE ↔ Massive Ticker Overview** 同一 vendor provenance join Gate — 文書: [`massive-price-overview-join-gate.md`](massive-price-overview-join-gate.md)  
 2. そこで ticker consistency / reference eligibility / currency_name evidence / primary_exchange evidence / FIGI evidence の安全な結線を判断  
 3. 本 PoC では join を実装しない
 
