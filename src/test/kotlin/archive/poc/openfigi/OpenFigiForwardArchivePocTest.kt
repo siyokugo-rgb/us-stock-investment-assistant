@@ -699,7 +699,7 @@ class OpenFigiForwardArchivePocTest {
                 archiveId = "a",
                 domain = "SECURITY_MASTER",
                 source = "openfigi.v3.mapping",
-                requestKey = "POST|/v3/mapping|sha256:reqhash",
+                requestKey = "POST|/v3/mapping|sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 externalIdentifier = "BBG000BLNNH6",
                 externalIdentifierNamespace = null,
                 attemptedAt = t0,
@@ -708,7 +708,7 @@ class OpenFigiForwardArchivePocTest {
                 ingestedAt = t1,
                 rawPayloadHash = "abc",
                 rawPayloadUri = "u",
-                requestPayloadHash = "reqhash",
+                requestPayloadHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 requestPayloadUri = "req-u",
                 httpStatus = 200,
                 transportStatus = TransportStatus.HTTP_RESPONSE,
@@ -721,7 +721,7 @@ class OpenFigiForwardArchivePocTest {
                 archiveId = "b",
                 domain = "SECURITY_MASTER",
                 source = "openfigi.v3.mapping",
-                requestKey = "POST|/v3/mapping|sha256:reqhash",
+                requestKey = "POST|/v3/mapping|sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 externalIdentifier = null,
                 externalIdentifierNamespace = "figi",
                 attemptedAt = t0,
@@ -730,7 +730,7 @@ class OpenFigiForwardArchivePocTest {
                 ingestedAt = t1,
                 rawPayloadHash = "abc",
                 rawPayloadUri = "u",
-                requestPayloadHash = "reqhash",
+                requestPayloadHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 requestPayloadUri = "req-u",
                 httpStatus = 200,
                 transportStatus = TransportStatus.HTTP_RESPONSE,
@@ -926,7 +926,7 @@ class OpenFigiForwardArchivePocTest {
                 archiveId = "a",
                 domain = "SECURITY_MASTER",
                 source = "openfigi.v3.mapping",
-                requestKey = "POST|/v3/mapping|sha256:abc",
+                requestKey = "POST|/v3/mapping|sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 attemptedAt = t0,
                 attemptFinishedAt = t1,
                 fetchedAt = t1,
@@ -1101,14 +1101,14 @@ class OpenFigiForwardArchivePocTest {
                 archiveId = "a",
                 domain = "SECURITY_MASTER",
                 source = "openfigi.v3.mapping",
-                requestKey = "WRONG|/v3/mapping|sha256:abc",
+                requestKey = "WRONG|/v3/mapping|sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 attemptedAt = t0,
                 attemptFinishedAt = t1,
                 fetchedAt = t1,
                 ingestedAt = t1,
                 rawPayloadHash = "abc",
                 rawPayloadUri = "u",
-                requestPayloadHash = "abc",
+                requestPayloadHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 requestPayloadUri = "req",
                 httpStatus = 200,
                 transportStatus = TransportStatus.HTTP_RESPONSE,
@@ -1211,5 +1211,165 @@ class OpenFigiForwardArchivePocTest {
         assertFalse(line.contains("knownAt"))
         assertFalse(line.contains("DailyPrice"))
         assertFalse(line.contains("JoinCandidate"))
+    }
+
+    @Test
+    fun malformedUtf8RequestBodyIsFailClosedWithoutSilentReplacement() {
+        val prefix = """[{"idType":"TICKER","idValue":"""".toByteArray(StandardCharsets.UTF_8)
+        val suffix = """"}]""".toByteArray(StandardCharsets.UTF_8)
+        val bad = prefix + byteArrayOf(0xFF.toByte()) + suffix
+        // JDK String(bytes, UTF_8) may silently insert U+FFFD; strict decoder must not.
+        assertTrue(String(bad, StandardCharsets.UTF_8).contains('\uFFFD'))
+        kotlin.test.assertFailsWith<archive.poc.ArchiveValidationException> {
+            OpenFigiMappingRequestBody.parseJobs(bad)
+        }
+        kotlin.test.assertFailsWith<archive.poc.ArchiveValidationException> {
+            OpenFigiMappingRequestBody.decodeUtf8Strict(bad)
+        }
+        val result =
+            service().archivePossessedResponse(
+                bad,
+                possession(200, validBody.copyOf(), requestBodyBytes = bad),
+            )
+        assertFalse(result.observedIngestSucceeded)
+        assertFalse(result.bindingProvenanceReady)
+        assertEquals(ObservationStatus.LOCAL_ARCHIVE_FAILURE, result.record.observationStatus)
+        assertNull(result.record.requestPayloadHash)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertTrue(result.failureNotes!!.contains("malformed", ignoreCase = true))
+    }
+
+    @Test
+    fun validUtf8RequestBodyStillParsesAndArchives() {
+        val requestBytes = OpenFigiMappingRequestBody.encode(ibmJob)
+        val jobs = OpenFigiMappingRequestBody.parseJobs(requestBytes)
+        assertEquals(1, jobs.size)
+        assertEquals("ID_BB_GLOBAL", jobs.single().idType)
+        val result =
+            service().archivePossessedResponse(
+                requestBytes,
+                possession(200, validBody.copyOf(), requestBodyBytes = requestBytes),
+            )
+        assertTrue(result.observedIngestSucceeded)
+        assertTrue(result.bindingProvenanceReady)
+    }
+
+    @Test
+    fun requestConstructionFailureDoesNotRethrowOrLeakSecrets() {
+        val secret = "openfigi-secret-key-with\nnewline"
+        val requestBytes = OpenFigiMappingRequestBody.encode(ibmJob)
+        val client =
+            OpenFigiMappingClient(
+                baseUrl = "http://127.0.0.1:1",
+                apiKey = secret,
+                httpClient =
+                    HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofMillis(100))
+                        .build(),
+                requestTimeout = Duration.ofMillis(100),
+                clock = { Instant.parse("2026-09-15T08:00:00Z") },
+            )
+        val possession = client.executeMapping(requestBytes)
+        assertEquals(Sha256Hex.of(requestBytes), possession.requestPayloadHash)
+        assertNull(possession.fetchedAt)
+        assertNull(possession.httpStatus)
+        assertNull(possession.bodyBytes)
+        assertNotNull(possession.transportFailureMessage)
+        // Class name only — never e.message / API key / header / URI.
+        assertEquals(possession.transportFailureMessage, possession.transportFailureMessage!!.trim())
+        assertFalse(possession.transportFailureMessage!!.contains(secret))
+        assertFalse(possession.transportFailureMessage!!.contains("newline"))
+        assertFalse(possession.transportFailureMessage!!.contains("OPENFIGI"))
+        assertFalse(possession.transportFailureMessage!!.contains("apikey", ignoreCase = true))
+        assertFalse(possession.transportFailureMessage!!.contains("http://"))
+        assertFalse(possession.transportFailureMessage!!.contains(":"))
+        assertTrue(possession.transportFailureMessage!!.matches(Regex("[A-Za-z0-9_\$]+")))
+
+        val result =
+            OpenFigiForwardArchiveService(
+                archiveRoot = root,
+                client = client,
+                clock = { Instant.parse("2026-09-15T08:00:01Z") },
+                idGenerator = { "sec-construction-1" },
+            ).archivePossessedResponse(requestBytes, possession)
+        assertFalse(result.observedIngestSucceeded)
+        assertTrue(result.bindingProvenanceReady) // request provenance may still commit
+        val line = result.record.toJsonLine()
+        assertFalse(line.contains(secret))
+        assertFalse(line.contains("openfigi-secret"))
+        assertEquals(possession.transportFailureMessage, result.record.notes)
+        assertFalse((result.record.notes ?: "").contains(" "))
+    }
+
+    @Test
+    fun requestPayloadHashFormatInvariantRejectsInvalidShapes() {
+        val t0 = Instant.parse("2026-09-15T08:10:00Z")
+        val t1 = Instant.parse("2026-09-15T08:10:01Z")
+        val valid = "a".repeat(64)
+        fun attempt(hash: String, keyHash: String = hash) {
+            ManifestRecord(
+                archiveId = "a",
+                domain = "SECURITY_MASTER",
+                source = "openfigi.v3.mapping",
+                requestKey = "POST|/v3/mapping|sha256:$keyHash",
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = t1,
+                ingestedAt = t1,
+                rawPayloadHash = "abc",
+                rawPayloadUri = "u",
+                requestPayloadHash = hash,
+                requestPayloadUri = "req",
+                httpStatus = 200,
+                transportStatus = TransportStatus.HTTP_RESPONSE,
+                observationStatus = ObservationStatus.OBSERVED,
+                eligibilityBoundaryAt = t1,
+            )
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> { attempt("a".repeat(63)) }
+        kotlin.test.assertFailsWith<IllegalArgumentException> { attempt("a".repeat(65)) }
+        kotlin.test.assertFailsWith<IllegalArgumentException> { attempt("A".repeat(64)) }
+        kotlin.test.assertFailsWith<IllegalArgumentException> { attempt("g".repeat(64)) }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            OpenFigiHttpPossession(
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = null,
+                httpStatus = null,
+                contentType = null,
+                bodyBytes = null,
+                transportFailureMessage = "X",
+                requestPayloadHash = "abc",
+            )
+        }
+        // valid 64 lowercase hex PASS
+        val ok =
+            ManifestRecord(
+                archiveId = "ok",
+                domain = "SECURITY_MASTER",
+                source = "openfigi.v3.mapping",
+                requestKey = "POST|/v3/mapping|sha256:$valid",
+                attemptedAt = t0,
+                attemptFinishedAt = t1,
+                fetchedAt = t1,
+                ingestedAt = t1,
+                rawPayloadHash = "abc",
+                rawPayloadUri = "u",
+                requestPayloadHash = valid,
+                requestPayloadUri = "req",
+                httpStatus = 200,
+                transportStatus = TransportStatus.HTTP_RESPONSE,
+                observationStatus = ObservationStatus.OBSERVED,
+                eligibilityBoundaryAt = t1,
+            )
+        val reloaded = ManifestRecord.fromJsonLine(ok.toJsonLine())
+        assertEquals(valid, reloaded.requestPayloadHash)
+
+        // short hash historically accepted as matching pair must now Fail-Closed on reload
+        val shortLine =
+            """{"archiveId":"a","domain":"SECURITY_MASTER","source":"openfigi.v3.mapping","requestKey":"POST|/v3/mapping|sha256:abc","observedFields":[],"attemptedAt":"$t0","attemptFinishedAt":"$t1","fetchedAt":"$t1","ingestedAt":"$t1","rawPayloadHash":"abc","rawPayloadUri":"u","requestPayloadHash":"abc","requestPayloadUri":"req","httpStatus":200,"transportStatus":"HTTP_RESPONSE","relatedPriorObservationIds":[],"observationStatus":"OBSERVED","eligibilityBoundaryAt":"$t1"}"""
+        kotlin.test.assertFailsWith<archive.poc.ArchiveValidationException> {
+            ManifestRecord.fromJsonLine(shortLine)
+        }
     }
 }

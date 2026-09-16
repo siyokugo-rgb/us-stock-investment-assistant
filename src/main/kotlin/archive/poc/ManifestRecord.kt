@@ -67,20 +67,24 @@ data class ManifestRecord(
         domain == "SECURITY_MASTER" && source == "openfigi.v3.mapping"
 
     /**
-     * OpenFIGI-only: when requestPayloadHash is present, requestKey must be
-     * `POST|/v3/mapping|sha256:{requestPayloadHash}` (exact hash match).
+     * OpenFIGI-only: when requestPayloadHash is present, it must be `^[0-9a-f]{64}$` and
+     * requestKey must be `POST|/v3/mapping|sha256:{requestPayloadHash}` (exact hash match).
      * Enforced on construction and [fromJsonLine] reload. Other domains unaffected.
      */
     private fun validateOpenFigiRequestKeyHashInvariant() {
         if (!isOpenFigi()) return
         if (requestPayloadHash == null) return
-        require(requestPayloadHash.isNotBlank()) { "OpenFIGI requestPayloadHash blank" }
+        require(OPENFIGI_REQUEST_PAYLOAD_HASH_REGEX.matches(requestPayloadHash)) {
+            "OpenFIGI requestPayloadHash must be 64-char lowercase hex SHA-256"
+        }
         val prefix = "POST|/v3/mapping|sha256:"
         require(requestKey.startsWith(prefix)) {
             "OpenFIGI requestKey must start with $prefix"
         }
         val keyHash = requestKey.removePrefix(prefix)
-        require(keyHash.isNotBlank()) { "OpenFIGI requestKey body hash blank" }
+        require(OPENFIGI_REQUEST_PAYLOAD_HASH_REGEX.matches(keyHash)) {
+            "OpenFIGI requestKey body hash must be 64-char lowercase hex SHA-256"
+        }
         require(keyHash == requestPayloadHash) {
             "OpenFIGI requestKey body hash mismatch vs requestPayloadHash"
         }
@@ -248,6 +252,8 @@ data class ManifestRecord(
     }
 
     companion object {
+        private val OPENFIGI_REQUEST_PAYLOAD_HASH_REGEX = Regex("^[0-9a-f]{64}$")
+
         fun fromJsonLine(line: String): ManifestRecord {
             val obj = ArchiveJson.parse(line).asObject("manifest")
             fun str(key: String): String? =

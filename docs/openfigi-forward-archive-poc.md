@@ -73,7 +73,9 @@ Both null or both present. Required for OpenFIGI `OBSERVED` / `REJECTED_VALIDATI
 - `observedIngestSucceeded` / `OBSERVED` = response path fully committed
 - `bindingProvenanceReady` = secret-free request bytes immutably stored + hash aligns with `requestKey`
 
-`OpenFigiHttpPossession.requestPayloadHash` is bound **before HTTP send** and must equal `SHA-256(requestBodyBytes)` at archive time. Mismatched possession/request bytes → Fail-Closed (`LOCAL_ARCHIVE_FAILURE`, not binding-ready, no OBSERVED). Job count is strict-parsed from request body bytes (caller-supplied count removed).
+`OpenFigiHttpPossession.requestPayloadHash` is bound **before HTTP send** and must equal `SHA-256(requestBodyBytes)` at archive time (`^[0-9a-f]{64}$`). Mismatched possession/request bytes → Fail-Closed (`LOCAL_ARCHIVE_FAILURE`, not binding-ready, no OBSERVED). Job count is strict-parsed from request body bytes (caller-supplied count removed) using UTF-8 `CharsetDecoder` + `CodingErrorAction.REPORT` (no replacement-character silent conversion).
+
+Request construction (endpoint / URI / headers including API key / POST / send) shares one sanitized try/catch. `transportFailureMessage` is **exception class simpleName only** — never `e.message`, URI, API key, or header values.
 
 Future `ProviderSymbolBindingEvidence` may reference `mappingArchiveId` / `mappingRequestKey` / `requestPayloadHash` / `requestPayloadUri`. Symbol string-match alone remains FAIL. This PoC does **not** emit binding evidence or join Alpha Vantage symbols.
 

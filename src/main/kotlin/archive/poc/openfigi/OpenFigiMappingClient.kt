@@ -7,6 +7,9 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.time.Instant
@@ -49,12 +52,7 @@ object OpenFigiMappingRequestBody {
      * Not a production OpenFIGI client schema validator.
      */
     fun parseJobs(requestBodyBytes: ByteArray): List<OpenFigiMappingJob> {
-        val text =
-            try {
-                String(requestBodyBytes, StandardCharsets.UTF_8)
-            } catch (e: Exception) {
-                throw ArchiveValidationException("OpenFIGI request body is not UTF-8", e)
-            }
+        val text = decodeUtf8Strict(requestBodyBytes)
         val root =
             try {
                 ArchiveJson.parse(text)
@@ -101,6 +99,26 @@ object OpenFigiMappingRequestBody {
 
     fun parseJobCount(requestBodyBytes: ByteArray): Int = parseJobs(requestBodyBytes).size
 
+    /**
+     * Fail-Closed UTF-8 decode: malformed / unmappable bytes raise
+     * [ArchiveValidationException] (no replacement-character silent conversion).
+     */
+    fun decodeUtf8Strict(requestBodyBytes: ByteArray): String {
+        val decoder =
+            StandardCharsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+        return try {
+            decoder.decode(ByteBuffer.wrap(requestBodyBytes)).toString()
+        } catch (e: CharacterCodingException) {
+            throw ArchiveValidationException(
+                "OpenFIGI request body is not strict UTF-8: ${e::class.java.simpleName}",
+                e,
+            )
+        }
+    }
+
     private fun quote(value: String): String =
         buildString {
             append('"')
@@ -137,14 +155,16 @@ data class OpenFigiHttpPossession(
     val bodyFullyReceived: Boolean get() = bodyBytes != null && fetchedAt != null
 
     init {
-        require(requestPayloadHash.isNotBlank()) { "requestPayloadHash blank" }
+        require(OpenFigiMappingClient.isValidRequestPayloadHash(requestPayloadHash)) {
+            "requestPayloadHash must be 64-char lowercase hex SHA-256"
+        }
     }
 }
 
 /**
  * Official mapping endpoint: POST https://api.openfigi.com/v3/mapping
  * Optional header X-OPENFIGI-APIKEY from env OPENFIGI_API_KEY only.
- * API key never enters requestKey / logs / fixtures.
+ * API key never enters requestKey / logs / fixtures / transportFailureMessage.
  */
 class OpenFigiMappingClient(
     private val baseUrl: String = DEFAULT_BASE_URL,
@@ -163,19 +183,22 @@ class OpenFigiMappingClient(
     }
 
     fun executeMapping(requestBodyBytes: ByteArray): OpenFigiHttpPossession {
+        // Secret-free request identity is fixed before any secret-bearing construction.
         val requestPayloadHash = Sha256Hex.of(requestBodyBytes)
         val attemptedAt = clock()
-        val endpoint = "${baseUrl.trimEnd('/')}$MAPPING_PATH"
-        val builder =
-            HttpRequest.newBuilder()
-                .uri(URI.create(endpoint))
-                .timeout(requestTimeout)
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(requestBodyBytes))
-        apiKey?.let { builder.header(API_KEY_HEADER, it) }
 
+        // Endpoint / URI / headers (incl. API key) / POST / send share one sanitized boundary.
+        // Catch never rethrows and never stores e.message (may embed URI / header / key material).
         return try {
+            val endpoint = "${baseUrl.trimEnd('/')}$MAPPING_PATH"
+            val builder =
+                HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .timeout(requestTimeout)
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(requestBodyBytes))
+            apiKey?.let { builder.header(API_KEY_HEADER, it) }
             val response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray())
             val attemptFinishedAt = clock()
             val body = response.body() ?: ByteArray(0)
@@ -198,8 +221,8 @@ class OpenFigiMappingClient(
                 httpStatus = null,
                 contentType = null,
                 bodyBytes = null,
-                transportFailureMessage =
-                    e::class.java.simpleName + ": " + (e.message ?: "transport failure"),
+                // Class name only — never e.message / URI / API key / header values.
+                transportFailureMessage = e::class.java.simpleName,
                 requestPayloadHash = requestPayloadHash,
             )
         }
@@ -213,12 +236,18 @@ class OpenFigiMappingClient(
         const val SOURCE = "openfigi.v3.mapping"
         const val DOMAIN = "SECURITY_MASTER"
         const val REQUEST_KEY_PREFIX = "POST|$MAPPING_PATH|sha256:"
+        private val REQUEST_PAYLOAD_HASH_REGEX = Regex("^[0-9a-f]{64}$")
+
+        fun isValidRequestPayloadHash(value: String): Boolean =
+            REQUEST_PAYLOAD_HASH_REGEX.matches(value)
 
         fun requestKey(requestBodyBytes: ByteArray): String =
             requestKeyForHash(Sha256Hex.of(requestBodyBytes))
 
         fun requestKeyForHash(requestPayloadHash: String): String {
-            require(requestPayloadHash.isNotBlank()) { "requestPayloadHash blank" }
+            require(isValidRequestPayloadHash(requestPayloadHash)) {
+                "requestPayloadHash must be 64-char lowercase hex SHA-256"
+            }
             return "$REQUEST_KEY_PREFIX$requestPayloadHash"
         }
 
