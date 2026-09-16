@@ -12,6 +12,8 @@ data class OpenFigiValidationOutcome(
     val externalIdentifier: String?,
     val externalIdentifierNamespace: String?,
     val notes: String?,
+    /** Count of non-blank `figi` values across all data rows (0 when rejected). */
+    val figiCandidateCount: Int = 0,
 )
 
 /**
@@ -147,6 +149,7 @@ object OpenFigiMappingValidator {
                 } else {
                     null
                 },
+            figiCandidateCount = figis.size,
         )
     }
 
@@ -167,5 +170,6 @@ object OpenFigiMappingValidator {
             externalIdentifier = null,
             externalIdentifierNamespace = null,
             notes = notes,
+            figiCandidateCount = 0,
         )
 }

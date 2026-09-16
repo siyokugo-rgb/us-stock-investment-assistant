@@ -28,6 +28,7 @@ enum class ProviderSymbolBindingReason {
     REQUEST_SYMBOL_MISMATCH,
     MULTIPLE_REQUEST_JOBS,
     MULTIPLE_MAPPING_CANDIDATES,
+    MISSING_EXTERNAL_IDENTIFIER,
     RESPONSE_VALIDATION_FAILED,
     PRICE_ELIGIBILITY_MISSING,
     MAPPING_ELIGIBILITY_MISSING,
@@ -63,9 +64,40 @@ data class ProviderSymbolBindingEvidence(
         when (status) {
             ProviderSymbolBindingStatus.CANDIDATE -> {
                 require(reason == null) { "CANDIDATE must not carry an ineligibility reason" }
+                require(priceEligibilityBoundaryAt != null) {
+                    "CANDIDATE requires priceEligibilityBoundaryAt"
+                }
+                require(mappingEligibilityBoundaryAt != null) {
+                    "CANDIDATE requires mappingEligibilityBoundaryAt"
+                }
                 require(bindingEligibleAt != null) { "CANDIDATE requires bindingEligibleAt" }
-                require(mappingRequestPayloadHash != null && mappingRequestPayloadUri != null)
-                require(mappingIdType != null && mappingIdValue != null)
+                val expectedMax =
+                    if (priceEligibilityBoundaryAt!!.isAfter(mappingEligibilityBoundaryAt!!)) {
+                        priceEligibilityBoundaryAt
+                    } else {
+                        mappingEligibilityBoundaryAt
+                    }
+                require(bindingEligibleAt == expectedMax) {
+                    "CANDIDATE bindingEligibleAt must equal max(price, mapping) eligibility"
+                }
+                require(!mappingRequestPayloadHash.isNullOrBlank()) {
+                    "CANDIDATE requires mappingRequestPayloadHash"
+                }
+                require(!mappingRequestPayloadUri.isNullOrBlank()) {
+                    "CANDIDATE requires mappingRequestPayloadUri"
+                }
+                require(mappingIdType == "TICKER") {
+                    "CANDIDATE requires mappingIdType=TICKER"
+                }
+                require(mappingIdValue == providerSymbol) {
+                    "CANDIDATE requires mappingIdValue == providerSymbol"
+                }
+                require(externalIdentifierNamespace == "figi") {
+                    "CANDIDATE requires externalIdentifierNamespace=figi"
+                }
+                require(!externalIdentifier.isNullOrBlank()) {
+                    "CANDIDATE requires non-blank externalIdentifier"
+                }
             }
             ProviderSymbolBindingStatus.AMBIGUOUS,
             ProviderSymbolBindingStatus.INELIGIBLE,

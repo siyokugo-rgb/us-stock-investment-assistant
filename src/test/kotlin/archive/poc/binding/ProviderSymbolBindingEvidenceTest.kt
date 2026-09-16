@@ -25,6 +25,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -431,9 +432,161 @@ class ProviderSymbolBindingEvidenceTest {
         val e2 = ProviderSymbolBindingEvidenceDeriver.derive(price, m2)
         assertEquals(ProviderSymbolBindingStatus.CANDIDATE, e1.status)
         assertEquals(ProviderSymbolBindingStatus.CANDIDATE, e2.status)
+        assertNotEquals(e1.externalIdentifier, e2.externalIdentifier)
         val resolved = ProviderSymbolBindingEvidenceDeriver.applyConflicts(listOf(e1, e2))
         assertTrue(resolved.all { it.status == ProviderSymbolBindingStatus.AMBIGUOUS })
         assertTrue(resolved.all { it.reason == ProviderSymbolBindingReason.CONFLICTING_CANDIDATES })
+    }
+
+    @Test
+    fun agreeingRepeatedMappingsWithSameFigiStayCandidate() {
+        val price = archiveObservedPrice("IBM")
+        val m1 = archiveObservedMapping()
+        val m2 = archiveObservedMapping() // same FIGI, different mappingArchiveId
+        assertNotEquals(m1.archiveId, m2.archiveId)
+        assertEquals(m1.externalIdentifier, m2.externalIdentifier)
+        val e1 = ProviderSymbolBindingEvidenceDeriver.derive(price, m1)
+        val e2 = ProviderSymbolBindingEvidenceDeriver.derive(price, m2)
+        assertEquals(ProviderSymbolBindingStatus.CANDIDATE, e1.status)
+        assertEquals(ProviderSymbolBindingStatus.CANDIDATE, e2.status)
+        val resolved = ProviderSymbolBindingEvidenceDeriver.applyConflicts(listOf(e1, e2))
+        assertTrue(resolved.all { it.status == ProviderSymbolBindingStatus.CANDIDATE })
+        assertTrue(resolved.all { it.reason == null })
+        assertTrue(resolved.all { it.externalIdentifier == "BBG000BLNNH6" })
+    }
+
+    @Test
+    fun mappingArchiveIdDifferenceAloneIsNotConflictReason() {
+        val price = archiveObservedPrice("IBM")
+        val m1 = archiveObservedMapping()
+        val m2 = archiveObservedMapping()
+        val resolved =
+            ProviderSymbolBindingEvidenceDeriver.applyConflicts(
+                listOf(
+                    ProviderSymbolBindingEvidenceDeriver.derive(price, m1),
+                    ProviderSymbolBindingEvidenceDeriver.derive(price, m2),
+                ),
+            )
+        assertEquals(2, resolved.map { it.mappingArchiveId }.distinct().size)
+        assertTrue(resolved.none { it.reason == ProviderSymbolBindingReason.CONFLICTING_CANDIDATES })
+        assertTrue(resolved.all { it.status == ProviderSymbolBindingStatus.CANDIDATE })
+    }
+
+    @Test
+    fun manifestExternalIdMismatchVsResponseIsFailClosed() {
+        val price = archiveObservedPrice("IBM")
+        val mapping = archiveObservedMapping()
+        val mismatched =
+            mapping.copy(
+                externalIdentifier = "BBG000B9XRY4",
+                externalIdentifierNamespace = "figi",
+            )
+        assertNotEquals(mapping.externalIdentifier, mismatched.externalIdentifier)
+        val ex =
+            assertFailsWith<ArchiveValidationException> {
+                ProviderSymbolBindingEvidenceDeriver.derive(price, mismatched)
+            }
+        assertTrue(ex.message!!.contains("MAPPING_MANIFEST_RESPONSE_MISMATCH"))
+    }
+
+    @Test
+    fun manifestNamespaceMismatchVsResponseIsFailClosed() {
+        val price = archiveObservedPrice("IBM")
+        val mapping = archiveObservedMapping()
+        val mismatched =
+            mapping.copy(
+                externalIdentifier = mapping.externalIdentifier,
+                externalIdentifierNamespace = "other",
+            )
+        val ex =
+            assertFailsWith<ArchiveValidationException> {
+                ProviderSymbolBindingEvidenceDeriver.derive(price, mismatched)
+            }
+        assertTrue(ex.message!!.contains("MAPPING_MANIFEST_RESPONSE_MISMATCH"))
+    }
+
+    @Test
+    fun uniqueResponseFigiWithMissingManifestExternalIdIsNotCandidate() {
+        val price = archiveObservedPrice("IBM")
+        val mapping = archiveObservedMapping()
+        val withoutExt =
+            mapping.copy(
+                externalIdentifier = null,
+                externalIdentifierNamespace = null,
+            )
+        val evidence = ProviderSymbolBindingEvidenceDeriver.derive(price, withoutExt)
+        assertEquals(ProviderSymbolBindingStatus.INELIGIBLE, evidence.status)
+        assertEquals(ProviderSymbolBindingReason.MISSING_EXTERNAL_IDENTIFIER, evidence.reason)
+        assertNull(evidence.externalIdentifier)
+    }
+
+    @Test
+    fun candidateInvariantRejectsBrokenManualConstruction() {
+        val t0 = Instant.parse("2026-09-16T03:00:00Z")
+        val t1 = Instant.parse("2026-09-16T03:00:01Z")
+        assertFailsWith<IllegalArgumentException> {
+            ProviderSymbolBindingEvidence(
+                priceArchiveId = "p",
+                priceProvider = "alphavantage",
+                providerSymbol = "IBM",
+                mappingArchiveId = "m",
+                mappingRequestKey = "k",
+                mappingRequestPayloadHash = "a".repeat(64),
+                mappingRequestPayloadUri = "u",
+                mappingIdType = "TICKER",
+                mappingIdValue = "IBM",
+                mappingExchCode = "US",
+                externalIdentifierNamespace = "figi",
+                externalIdentifier = "BBG000BLNNH6",
+                priceEligibilityBoundaryAt = t0,
+                mappingEligibilityBoundaryAt = t1,
+                bindingEligibleAt = t0, // not max
+                status = ProviderSymbolBindingStatus.CANDIDATE,
+                reason = null,
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            ProviderSymbolBindingEvidence(
+                priceArchiveId = "p",
+                priceProvider = "alphavantage",
+                providerSymbol = "IBM",
+                mappingArchiveId = "m",
+                mappingRequestKey = "k",
+                mappingRequestPayloadHash = "a".repeat(64),
+                mappingRequestPayloadUri = "u",
+                mappingIdType = "ID_BB_GLOBAL",
+                mappingIdValue = "BBG000BLNNH6",
+                mappingExchCode = null,
+                externalIdentifierNamespace = "figi",
+                externalIdentifier = "BBG000BLNNH6",
+                priceEligibilityBoundaryAt = t0,
+                mappingEligibilityBoundaryAt = t1,
+                bindingEligibleAt = t1,
+                status = ProviderSymbolBindingStatus.CANDIDATE,
+                reason = null,
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            ProviderSymbolBindingEvidence(
+                priceArchiveId = "p",
+                priceProvider = "alphavantage",
+                providerSymbol = "IBM",
+                mappingArchiveId = "m",
+                mappingRequestKey = "k",
+                mappingRequestPayloadHash = "a".repeat(64),
+                mappingRequestPayloadUri = "u",
+                mappingIdType = "TICKER",
+                mappingIdValue = "IBM",
+                mappingExchCode = "US",
+                externalIdentifierNamespace = null,
+                externalIdentifier = null,
+                priceEligibilityBoundaryAt = t0,
+                mappingEligibilityBoundaryAt = t1,
+                bindingEligibleAt = t1,
+                status = ProviderSymbolBindingStatus.CANDIDATE,
+                reason = null,
+            )
+        }
     }
 
     @Test

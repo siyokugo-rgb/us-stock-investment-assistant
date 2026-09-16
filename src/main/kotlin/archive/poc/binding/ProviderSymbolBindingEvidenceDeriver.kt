@@ -19,10 +19,11 @@ import java.time.Instant
  *
  * Forbidden: caller-supplied free-form providerSymbol, ticker-string-only join,
  * SecurityId / currency / DailyPrice / knownAt invention, first-FIGI selection,
- * current-mapping past backfill.
+ * current-mapping past backfill, preferring manifest over response revalidation.
  */
 object ProviderSymbolBindingEvidenceDeriver {
     const val PRICE_PROVIDER_ALPHAVANTAGE = "alphavantage"
+    const val FIGI_NAMESPACE = "figi"
 
     /**
      * Pair-wise derive. Provider symbol is parsed **only** from the PRICE record's
@@ -30,8 +31,8 @@ object ProviderSymbolBindingEvidenceDeriver {
      *
      * Fail-Closed (throws [ArchiveValidationException]):
      * - malformed PRICE requestKey
-     * - OpenFIGI request raw missing / unreadable
-     * - request raw SHA-256 ≠ requestPayloadHash
+     * - OpenFIGI request/response raw missing / unreadable / hash mismatch
+     * - manifest external id disagrees with revalidated response external id
      */
     fun derive(
         priceRecord: ManifestRecord,
@@ -122,7 +123,7 @@ object ProviderSymbolBindingEvidenceDeriver {
         val jobs =
             try {
                 OpenFigiMappingRequestBody.parseJobs(requestBytes)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 return ineligible(
                     ProviderSymbolBindingReason.REQUEST_PROVENANCE_INVALID,
                     reqHash = reqHash,
@@ -203,11 +204,7 @@ object ProviderSymbolBindingEvidenceDeriver {
                 mappingRecord.eligibilityBoundaryAt!!,
             )
 
-        // Copy manifest external id only when already uniquely recorded — never first-FIGI pick.
-        val extId = mappingRecord.externalIdentifier
-        val extNs = mappingRecord.externalIdentifierNamespace
-        if (extId == null || extNs == null || validation.externalIdentifier == null) {
-            // OBSERVED with multi-candidate leaves externalIdentifier null → AMBIGUOUS
+        if (validation.figiCandidateCount > 1) {
             return ProviderSymbolBindingEvidence(
                 priceArchiveId = priceRecord.archiveId,
                 priceProvider = PRICE_PROVIDER_ALPHAVANTAGE,
@@ -229,6 +226,55 @@ object ProviderSymbolBindingEvidenceDeriver {
             )
         }
 
+        if (
+            validation.figiCandidateCount != 1 ||
+                validation.externalIdentifier.isNullOrBlank() ||
+                validation.externalIdentifierNamespace != FIGI_NAMESPACE
+        ) {
+            return ineligible(
+                ProviderSymbolBindingReason.MISSING_EXTERNAL_IDENTIFIER,
+                idType = job.idType,
+                idValue = job.idValue,
+                exch = job.exchCode,
+                reqHash = reqHash,
+                reqUri = reqUri,
+                bindingAt = bindingAt,
+            )
+        }
+
+        val manifestId = mappingRecord.externalIdentifier
+        val manifestNs = mappingRecord.externalIdentifierNamespace
+        if (manifestId.isNullOrBlank() || manifestNs.isNullOrBlank()) {
+            // Unique FIGI in raw does not invent / promote a missing manifest external id.
+            return ineligible(
+                ProviderSymbolBindingReason.MISSING_EXTERNAL_IDENTIFIER,
+                idType = job.idType,
+                idValue = job.idValue,
+                exch = job.exchCode,
+                reqHash = reqHash,
+                reqUri = reqUri,
+                bindingAt = bindingAt,
+            )
+        }
+
+        if (
+            manifestId != validation.externalIdentifier ||
+                manifestNs != validation.externalIdentifierNamespace
+        ) {
+            throw ArchiveValidationException(
+                "MAPPING_MANIFEST_RESPONSE_MISMATCH: manifest external id/namespace " +
+                    "disagrees with revalidated response " +
+                    "(manifest=$manifestNs/$manifestId response=" +
+                    "${validation.externalIdentifierNamespace}/${validation.externalIdentifier})",
+            )
+        }
+
+        if (manifestNs != FIGI_NAMESPACE) {
+            throw ArchiveValidationException(
+                "MAPPING_MANIFEST_RESPONSE_MISMATCH: externalIdentifierNamespace must be $FIGI_NAMESPACE",
+            )
+        }
+
         return ProviderSymbolBindingEvidence(
             priceArchiveId = priceRecord.archiveId,
             priceProvider = PRICE_PROVIDER_ALPHAVANTAGE,
@@ -240,8 +286,8 @@ object ProviderSymbolBindingEvidenceDeriver {
             mappingIdType = job.idType,
             mappingIdValue = job.idValue,
             mappingExchCode = job.exchCode,
-            externalIdentifierNamespace = extNs,
-            externalIdentifier = extId,
+            externalIdentifierNamespace = manifestNs,
+            externalIdentifier = manifestId,
             priceEligibilityBoundaryAt = priceRecord.eligibilityBoundaryAt,
             mappingEligibilityBoundaryAt = mappingRecord.eligibilityBoundaryAt,
             bindingEligibleAt = bindingAt,
@@ -251,8 +297,11 @@ object ProviderSymbolBindingEvidenceDeriver {
     }
 
     /**
-     * Same [priceArchiveId] with multiple distinct CANDIDATE mappings → all become AMBIGUOUS
-     * (latest-wins / revision auto-pick forbidden). Other statuses unchanged.
+     * Conflict only when the same [priceArchiveId] has CANDIDATE rows with **distinct**
+     * `(externalIdentifierNamespace, externalIdentifier)` identity pairs.
+     *
+     * Agreeing repeated mappings (same FIGI, different mappingArchiveId) stay CANDIDATE.
+     * mappingArchiveId difference alone is never a conflict reason. latest-wins forbidden.
      */
     fun applyConflicts(
         evidences: List<ProviderSymbolBindingEvidence>,
@@ -264,8 +313,10 @@ object ProviderSymbolBindingEvidenceDeriver {
         val conflictedPrices =
             byPrice
                 .filter { (_, list) ->
-                    list.map { it.mappingArchiveId }.distinct().size > 1 ||
-                        list.map { it.externalIdentifier }.distinct().size > 1
+                    list
+                        .map { it.externalIdentifierNamespace to it.externalIdentifier }
+                        .distinct()
+                        .size > 1
                 }.keys
         if (conflictedPrices.isEmpty()) return evidences
         return evidences.map { ev ->
