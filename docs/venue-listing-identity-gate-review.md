@@ -21,7 +21,8 @@
 | Forward Research | **CONDITIONAL GO**（維持） |
 | Real Backtest | **NO-GO**（維持） |
 
-関連 Gate Review: [`forward-security-price-join-gate-review.md`](forward-security-price-join-gate-review.md)
+関連 Gate Review: [`forward-security-price-join-gate-review.md`](forward-security-price-join-gate-review.md)  
+続編（AV Price venue semantics）: [`alpha-vantage-price-venue-semantics-gate.md`](alpha-vantage-price-venue-semantics-gate.md)
 
 ---
 
@@ -486,6 +487,8 @@ AV Price venue semantics・share-class / validity・（必要時）MIC は別レ
 **含めない:** Alpha Vantage client 実装、SecurityId 発行、DailyPrice、Trading Currency implementation、MIC mapper、exchCode→MIC 推測、Android。
 
 **十分になった後の次点:** MIC mapping evidence PoC（OpenFIGI `micCode` provenance）、または ShareClassEvidence / SecurityId Issuance Gate（currency は別）。
+
+**実施結果:** [`alpha-vantage-price-venue-semantics-gate.md`](alpha-vantage-price-venue-semantics-gate.md)
 
 ---
 
