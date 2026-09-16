@@ -77,7 +77,7 @@ Both null or both present. Required for OpenFIGI `OBSERVED` / `REJECTED_VALIDATI
 
 Request construction (endpoint / URI / headers including API key / POST / send) shares one sanitized try/catch. `transportFailureMessage` is **exception class simpleName only** — never `e.message`, URI, API key, or header values.
 
-Future `ProviderSymbolBindingEvidence` may reference `mappingArchiveId` / `mappingRequestKey` / `requestPayloadHash` / `requestPayloadUri`. Symbol string-match alone remains FAIL. This PoC does **not** emit binding evidence or join Alpha Vantage symbols.
+Future `ProviderSymbolBindingEvidence` may reference `mappingArchiveId` / `mappingRequestKey` / `requestPayloadHash` / `requestPayloadUri`. Symbol string-match alone remains FAIL. Binding candidate derivation lives in `archive.poc.binding` and still does **not** mean Security identity resolved / SecurityId / DailyPrice.
 
 Request write failure / hash mismatch / path collision / manifest append failure → not binding-ready (`LOCAL_ARCHIVE_FAILURE` when local). Response OBSERVED without request provenance is invariant-forbidden for OpenFIGI.
 
@@ -231,10 +231,10 @@ Live task: `./gradlew openFigiForwardArchivePoc` (optional; ignoreExitValue=true
 | Critical | Retrospective Security Master / Price knownAt / CA PIT / Universe / Dividend Grade still block Real Backtest |
 | High | OpenFIGI alone is not a complete Security Master; forward research still needs broader archive + mapping policy |
 | High | Live rate limits / keyless quotas may yield PROVIDER_FAILURE; not treated as product outage |
-| High | Request provenance enables future ProviderSymbolBindingEvidence references but does **not** establish Alpha Vantage ↔ FIGI join |
+| High | Request provenance + ProviderSymbolBindingEvidence **CANDIDATE** still ≠ SecurityId / DailyPrice / Real Backtest GO |
 
 ---
 
 ## Next step
 
-ProviderSymbolBindingEvidence design/implementation that **references** mapping request/response provenance — still without SecurityId auto-generation, DailyPrice mapping, Join Candidate promotion, or Real Backtest GO.
+Trading Currency source PoC（DailyPrice 専用）または Venue/MIC evidence — still without SecurityId auto-generation, DailyPrice mapping, Join Candidate promotion, or Real Backtest GO.

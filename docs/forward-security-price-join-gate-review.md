@@ -134,16 +134,17 @@ provider symbol 文字列と OpenFIGI response 上の ticker / FIGI が一致す
 
 必要なのは、Price 側 provider symbol と Security Master 側 external id を結ぶ **binding evidence** である。
 
-概念例（実装禁止・文書概念のみ）:
+概念例（SecurityId / DailyPrice は禁止。binding candidate のみ）:
 
 ```text
 ProviderSymbolBindingEvidence
-  priceProvider                 // e.g. alphavantage
-  providerSymbol                // request provenance only
-  mappingArchiveId              // OpenFIGI OBSERVED archive
-  mappingRequestKey             // secret-free request identity
-  mappingRequestInput           // idType, idValue, venue条件? 等
-  bindingEligibilityBoundaryAt  // forward eligibility only; not historical knownAt
+  priceArchiveId / priceProvider / providerSymbol   // providerSymbol は PRICE requestKey から strict 導出
+  mappingArchiveId / mappingRequestKey
+  mappingRequestPayloadHash / mappingRequestPayloadUri
+  mappingIdType / mappingIdValue / mappingExchCode?
+  externalIdentifier? / namespace?                    // manifest 一意時のみコピー
+  bindingEligibleAt = max(price, mapping) eligibility // historical knownAt ではない
+  status = CANDIDATE | AMBIGUOUS | INELIGIBLE
 ```
 
 意味:
@@ -152,13 +153,14 @@ ProviderSymbolBindingEvidence
 - OpenFIGI mapping の **request input**（何を問い合わせてその FIGI を得たか）が後から検証できる必要がある
 - response 側 FIGI だけでは「どの provider symbol に対する mapping か」を安全に固定できない
 
-**現状判定（main）:**
+**現状判定（main / PR #22 以降）:**
 
-- OpenFIGI archive は **response body** を immutable 保存する
-- `requestKey = POST|/v3/mapping|sha256:{requestBodySha256}` はあるが、**request body 自体は raw として永続化されていない**
-- したがって後から `idType` / `idValue` / `exchCode` 等の request input を archive から再現・監査できない
+- OpenFIGI archive は **response body** に加え **secret-free request body**（`request/{archiveId}.request.raw`）を immutable 保存する
+- `requestKey = POST|/v3/mapping|sha256:{requestPayloadHash}` と `requestPayloadHash` / `requestPayloadUri` が整合
+- `idType` / `idValue` / `exchCode` は request raw から strict 再検証可能
+- `ProviderSymbolBindingEvidence` は PRICE OBSERVED + OpenFIGI OBSERVED + TICKER request idValue==providerSymbol + one-candidate のときのみ **CANDIDATE**（Security identity resolved ではない）
 
-→ Join Candidate 実装より先に、**OpenFIGI Mapping Request Provenance 補強**が必要（§16）。
+→ Request provenance は満たされた。次は Join Candidate / SecurityId / DailyPrice へ進まず、binding candidate の運用境界を維持する（§16）。
 
 ### B. OpenFIGI identity evidence
 
@@ -469,7 +471,7 @@ trading currency は **DailyPrice mapping blocker のみ**（§8）。
 | D | trading currency は解決したか | **未解決** |
 | E | venue/MIC 不足は Critical か High か | DailyPrice / dual-list 向け **Critical**。狭義 identity 候補検討では **High（保留可）** |
 | F | OpenFIGI 単独で足りるか | **足りない** |
-| G | 次の最小作業 | **OpenFIGI Mapping Request Provenance 補強**（request body / idType・idValue・venue 条件を後から検証可能にする。Join Candidate / SecurityId / DailyPrice は含めない） |
+| G | 次の最小作業 | **Forward Security Mapping / Join Candidate 境界の維持的拡張はまだ禁止**。本 PR は `ProviderSymbolBindingEvidence` candidate のみ。SecurityId / DailyPrice / PriceSecurityJoinCandidate は含めない |
 
 ---
 
@@ -477,7 +479,7 @@ trading currency は **DailyPrice mapping blocker のみ**（§8）。
 
 ### Critical
 
-1. provider symbol ↔ OpenFIGI external id の **binding / request provenance 不足** → 安全 join 不可  
+1. ~~provider symbol ↔ OpenFIGI external id の **binding / request provenance 不足**~~ → PR #22 + ProviderSymbolBindingEvidence candidate で **request provenance は充足**。ただし SecurityId 確定 join は未開放（PARTIAL 維持）  
 2. Trading currency evidence 不在 → **DailyPrice 不可**（SecurityId issuance とは分離）  
 3. Historical knownAt / retrospective Security Master 不在 → Real Backtest NO-GO  
 4. CA PIT / survivorship / universe entitlement 等の既存 Critical（本 Gate で解消しない）  
@@ -527,24 +529,19 @@ trading currency は **DailyPrice mapping blocker のみ**（§8）。
 
 ## 16. Next minimal work (choose one)
 
-### 再判定結果
+### 再判定結果（PR #22 反映後）
 
-OpenFIGI request-side provenance は **不十分**:
+OpenFIGI request-side provenance は **main で充足**:
 
-- response raw は保存される
-- `requestKey` は request body SHA-256 を含むが、**request body 自体が archive に残らない**
-- 後から `idType` / `idValue` / `exchCode` 等を検証できない
-- よって provider symbol ↔ FIGI の binding を Fail-Closed に固定できない
+- response raw と request raw（`request/{archiveId}.request.raw`）を immutable 保存
+- `requestPayloadHash` / `requestPayloadUri` と `requestKey` body hash が整合
+- 後から `idType` / `idValue` / `exchCode` を Fail-Closed に再検証可能
+- `ProviderSymbolBindingEvidence` は PRICE requestKey 由来 symbol と OpenFIGI TICKER request の provenance 結合として **CANDIDATE** まで導出可能
 
-**次の最小作業（1つ）: OpenFIGI Mapping Request Provenance 補強**
+**まだ開かないもの:** Security identity resolved、SecurityId 自動発行、PriceSecurityJoinCandidate、DailyPrice、currency 推測、MIC、Backtest
 
-範囲（将来 PR）:
-
-- mapping request input（idType / idValue / venue 条件等）を secret なしで後から検証可能にする
-- `ProviderSymbolBindingEvidence` の前提を満たす request-side provenance
-- **含めない:** Join Candidate 本実装、SecurityId 自動発行、DailyPrice、currency 推測、Backtest、Android
-
-**十分になった後の次点:** Forward Security Mapping Evidence（binding 成立後の join candidate 境界）
+**次の最小作業（1つ）:** 必要なら Trading Currency source PoC（DailyPrice 専用）または Venue/MIC evidence model。  
+**含めない:** SecurityId 自動発行、DailyPrice mapping、current mapping past backfill、Android UI
 
 その他の次点:
 
