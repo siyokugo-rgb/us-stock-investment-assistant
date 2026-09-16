@@ -1,0 +1,18 @@
+{
+  "request_id": "synthetic-overview-request-id",
+  "results": {
+    "active": true,
+    "cik": "0000320193",
+    "composite_figi": "BBG000B9XRY4",
+    "currency_name": "usd",
+    "list_date": "1980-12-12",
+    "locale": "us",
+    "market": "stocks",
+    "name": "Apple Inc.",
+    "primary_exchange": "XNAS",
+    "share_class_figi": "BBG001S5N8V8",
+    "ticker": "AAPL",
+    "type": "CS"
+  },
+  "status": "OK"
+}

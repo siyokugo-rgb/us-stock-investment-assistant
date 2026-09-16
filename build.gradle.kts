@@ -108,3 +108,13 @@ tasks.register<JavaExec>("massiveDailyAggsForwardArchivePoc") {
     mainClass.set("archive.poc.massive.MassiveDailyAggsLiveArchivePocKt")
     isIgnoreExitValue = true
 }
+
+// Live Massive Ticker Overview forward archive PoC. Requires MASSIVE_API_KEY else LIVE_UNVERIFIED.
+tasks.register<JavaExec>("massiveTickerOverviewForwardArchivePoc") {
+    group = "verification"
+    description =
+        "Run live Massive Ticker Overview forward self-archive PoC (Fail-Closed; no SecurityId/currency/MIC/FIGI/DailyPrice/join)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("archive.poc.massive.MassiveTickerOverviewLiveArchivePocKt")
+    isIgnoreExitValue = true
+}
