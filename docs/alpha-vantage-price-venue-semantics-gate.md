@@ -21,7 +21,8 @@
 | Forward Research | **CONDITIONAL GO**（維持） |
 | Real Backtest | **NO-GO**（維持） |
 
-関連: [`venue-listing-identity-gate-review.md`](venue-listing-identity-gate-review.md)、[`forward-security-price-join-gate-review.md`](forward-security-price-join-gate-review.md)
+関連: [`venue-listing-identity-gate-review.md`](venue-listing-identity-gate-review.md)、[`forward-security-price-join-gate-review.md`](forward-security-price-join-gate-review.md)  
+続編（PRICE source 再選定）: [`forward-price-source-reselection-gate.md`](forward-price-source-reselection-gate.md)
 
 ---
 
