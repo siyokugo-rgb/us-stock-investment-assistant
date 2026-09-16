@@ -117,7 +117,7 @@ Example: Overview `date=2024-06-01`, ingest 2026 → CANDIDATE with `bindingElig
 
 本 PoC PASS 後に再評価:
 
-A. Trading Currency Evidence Gate  
+A. Trading Currency Evidence Gate — 文書: [`trading-currency-evidence-gate.md`](trading-currency-evidence-gate.md)  
 B. MIC / Venue Evidence Gate  
 C. All Tickers inactive/delisted archive  
 D. OpenFIGI↔Massive FIGI consistency  
