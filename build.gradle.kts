@@ -98,3 +98,13 @@ tasks.register<JavaExec>("alphaVantageDailyForwardArchivePoc") {
     mainClass.set("archive.poc.alphavantage.AlphaVantageDailyLiveArchivePocKt")
     isIgnoreExitValue = true
 }
+
+// Live Massive Custom Bars 1d unadjusted forward archive PoC. Requires MASSIVE_API_KEY else LIVE_UNVERIFIED.
+tasks.register<JavaExec>("massiveDailyAggsForwardArchivePoc") {
+    group = "verification"
+    description =
+        "Run live Massive Custom Bars 1d unadjusted forward self-archive PoC (Fail-Closed; no SecurityId/currency/MIC/FIGI/DailyPrice)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("archive.poc.massive.MassiveDailyAggsLiveArchivePocKt")
+    isIgnoreExitValue = true
+}

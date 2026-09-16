@@ -1,0 +1,305 @@
+package archive.poc.massive
+
+import archive.poc.ArchiveIoException
+import archive.poc.CoverageCalculator
+import archive.poc.CoverageWindow
+import archive.poc.ImmutableRawStore
+import archive.poc.ManifestRecord
+import archive.poc.ManifestStore
+import archive.poc.ObservationStatus
+import archive.poc.Sha256Hex
+import archive.poc.TransportStatus
+import java.nio.file.Path
+import java.time.Instant
+import java.util.UUID
+
+data class MassiveDailyAggsArchiveResult(
+    val record: ManifestRecord,
+    val coverage: CoverageWindow,
+    /** True only when status==OBSERVED and raw+manifest fully committed. */
+    val observedIngestSucceeded: Boolean,
+    val failureNotes: String? = null,
+)
+
+/**
+ * Massive Custom Bars 1d adjusted=false → immutable raw archive + append-only manifest.
+ *
+ * Forbidden: SecurityId, currency, MIC, FIGI, Ticker Overview, DailyPrice mapping,
+ * historical knownAt invention, adjusted=true, AV archive deletion/replacement.
+ *
+ * Reuses archive.poc common store/manifest/coverage primitives.
+ */
+class MassiveDailyAggsForwardArchiveService(
+    archiveRoot: Path,
+    private val client: MassiveDailyAggsArchiveClient,
+    private val clock: () -> Instant = { Instant.now() },
+    private val idGenerator: () -> String = { UUID.randomUUID().toString() },
+) {
+    private val rawStore = ImmutableRawStore(archiveRoot)
+    private val manifestStore =
+        ManifestStore(
+            archiveRoot
+                .resolve(MassiveDailyAggsArchiveClient.DOMAIN)
+                .resolve(MassiveDailyAggsArchiveClient.SOURCE)
+                .resolve("manifest.jsonl"),
+        )
+    private val rawRelativeDir =
+        "${MassiveDailyAggsArchiveClient.DOMAIN}/${MassiveDailyAggsArchiveClient.SOURCE}/raw"
+
+    fun archiveDailyAggs(
+        ticker: String,
+        from: String,
+        to: String,
+    ): MassiveDailyAggsArchiveResult =
+        finalize(
+            ticker = ticker.trim(),
+            from = from.trim(),
+            to = to.trim(),
+            possession = client.executeDailyAggs(ticker.trim(), from.trim(), to.trim()),
+        )
+
+    fun archivePossessedResponse(
+        ticker: String,
+        from: String,
+        to: String,
+        possession: MassiveHttpPossession,
+    ): MassiveDailyAggsArchiveResult {
+        val trimmedTicker = ticker.trim()
+        val trimmedFrom = from.trim()
+        val trimmedTo = to.trim()
+        val expectedKey = client.requestKeyFor(trimmedTicker, trimmedFrom, trimmedTo)
+        require(possession.requestKey == expectedKey) {
+            "possession.requestKey mismatch: possession=${possession.requestKey} expected=$expectedKey " +
+                "(refusing to archive with incorrect request provenance)"
+        }
+        return finalize(
+            ticker = trimmedTicker,
+            from = trimmedFrom,
+            to = trimmedTo,
+            possession = possession,
+        )
+    }
+
+    private fun finalize(
+        ticker: String,
+        @Suppress("UNUSED_PARAMETER") from: String,
+        @Suppress("UNUSED_PARAMETER") to: String,
+        possession: MassiveHttpPossession,
+    ): MassiveDailyAggsArchiveResult {
+        val requestKey = possession.requestKey
+        val archiveId = idGenerator()
+        val priors =
+            manifestStore.findByRequestKey(
+                MassiveDailyAggsArchiveClient.DOMAIN,
+                MassiveDailyAggsArchiveClient.SOURCE,
+                requestKey,
+            )
+
+        if (!possession.bodyFullyReceived) {
+            val record =
+                ManifestRecord(
+                    archiveId = archiveId,
+                    domain = MassiveDailyAggsArchiveClient.DOMAIN,
+                    source = MassiveDailyAggsArchiveClient.SOURCE,
+                    requestKey = requestKey,
+                    attemptedAt = possession.attemptedAt,
+                    attemptFinishedAt = possession.attemptFinishedAt,
+                    fetchedAt = null,
+                    ingestedAt = clock(),
+                    httpStatus = possession.httpStatus,
+                    transportStatus = TransportStatus.TRANSPORT_FAILURE,
+                    observationStatus = ObservationStatus.PROVIDER_FAILURE,
+                    eligibilityBoundaryAt = null,
+                    notes = possession.transportFailureMessage ?: "transport failure",
+                )
+            return commit(record, observedOk = false)
+        }
+
+        val body = possession.bodyBytes!!
+        val fetchedAt = possession.fetchedAt!!
+        val hash = Sha256Hex.of(body)
+        val httpStatus =
+            possession.httpStatus
+                ?: return commit(
+                    ManifestRecord(
+                        archiveId = archiveId,
+                        domain = MassiveDailyAggsArchiveClient.DOMAIN,
+                        source = MassiveDailyAggsArchiveClient.SOURCE,
+                        requestKey = requestKey,
+                        attemptedAt = possession.attemptedAt,
+                        attemptFinishedAt = possession.attemptFinishedAt,
+                        fetchedAt = fetchedAt,
+                        ingestedAt = clock(),
+                        rawPayloadHash = hash,
+                        contentType = possession.contentType,
+                        transportStatus = TransportStatus.LOCAL_FAILURE,
+                        observationStatus = ObservationStatus.LOCAL_ARCHIVE_FAILURE,
+                        eligibilityBoundaryAt = null,
+                        notes = "missing httpStatus despite body possession",
+                    ),
+                    observedOk = false,
+                    failureNotes = "missing httpStatus",
+                )
+
+        val validation =
+            MassiveDailyAggsArchiveValidator.validate(
+                httpStatus = httpStatus,
+                bodyBytes = body,
+                requestedTicker = ticker,
+            )
+        val intendedStatus =
+            when {
+                httpStatus !in 200..299 -> ObservationStatus.PROVIDER_FAILURE
+                !validation.okForObserved -> ObservationStatus.REJECTED_VALIDATION
+                else -> ObservationStatus.OBSERVED
+            }
+
+        val duplicateOf =
+            priors.firstOrNull { it.rawPayloadHash != null && it.rawPayloadHash == hash }?.archiveId
+        val revisionCandidateOf =
+            if (duplicateOf == null) {
+                priors.lastOrNull { it.rawPayloadHash != null && it.rawPayloadHash != hash }?.archiveId
+            } else {
+                null
+            }
+        val related =
+            if (duplicateOf != null || revisionCandidateOf != null) {
+                priors.map { it.archiveId }.distinct()
+            } else {
+                emptyList()
+            }
+
+        val rawPath =
+            try {
+                rawStore.writeImmutable(
+                    relativeDir = rawRelativeDir,
+                    archiveId = archiveId,
+                    payload = body,
+                    expectedSha256Hex = hash,
+                )
+            } catch (e: ArchiveIoException) {
+                return commit(
+                    ManifestRecord(
+                        archiveId = archiveId,
+                        domain = MassiveDailyAggsArchiveClient.DOMAIN,
+                        source = MassiveDailyAggsArchiveClient.SOURCE,
+                        requestKey = requestKey,
+                        attemptedAt = possession.attemptedAt,
+                        attemptFinishedAt = possession.attemptFinishedAt,
+                        fetchedAt = fetchedAt,
+                        ingestedAt = clock(),
+                        rawPayloadHash = hash,
+                        rawPayloadUri = null,
+                        contentType = possession.contentType,
+                        httpStatus = httpStatus,
+                        transportStatus = TransportStatus.LOCAL_FAILURE,
+                        observationStatus = ObservationStatus.LOCAL_ARCHIVE_FAILURE,
+                        eligibilityBoundaryAt = null,
+                        notes = "raw write failed: ${e.message}",
+                        duplicateOf = duplicateOf,
+                        revisionCandidateOf = revisionCandidateOf,
+                        relatedPriorObservationIds = related,
+                    ),
+                    observedOk = false,
+                    failureNotes = e.message,
+                )
+            }
+
+        val ingestedAt = clock()
+        val record =
+            ManifestRecord(
+                archiveId = archiveId,
+                domain = MassiveDailyAggsArchiveClient.DOMAIN,
+                source = MassiveDailyAggsArchiveClient.SOURCE,
+                requestKey = requestKey,
+                // Provider ticker is NOT elevated to externalIdentifier / SecurityId.
+                externalIdentifier = null,
+                externalIdentifierNamespace = null,
+                observedFields = validation.observedFields,
+                attemptedAt = possession.attemptedAt,
+                attemptFinishedAt = possession.attemptFinishedAt,
+                fetchedAt = fetchedAt,
+                ingestedAt = ingestedAt,
+                rawPayloadHash = hash,
+                rawPayloadUri = rawPath.toString(),
+                contentType = possession.contentType,
+                httpStatus = httpStatus,
+                transportStatus = TransportStatus.HTTP_RESPONSE,
+                revisionCandidateOf = revisionCandidateOf,
+                relatedPriorObservationIds = related,
+                duplicateOf = duplicateOf,
+                observationStatus = intendedStatus,
+                eligibilityBoundaryAt =
+                    if (intendedStatus == ObservationStatus.OBSERVED) ingestedAt else null,
+                notes = validation.notes,
+            )
+        return commit(record, observedOk = intendedStatus == ObservationStatus.OBSERVED)
+    }
+
+    private fun commit(
+        record: ManifestRecord,
+        observedOk: Boolean,
+        failureNotes: String? = null,
+    ): MassiveDailyAggsArchiveResult {
+        try {
+            manifestStore.append(record)
+        } catch (e: ArchiveIoException) {
+            val localFailure =
+                record.copy(
+                    observationStatus = ObservationStatus.LOCAL_ARCHIVE_FAILURE,
+                    eligibilityBoundaryAt = null,
+                    transportStatus = TransportStatus.LOCAL_FAILURE,
+                    notes =
+                        listOfNotNull(record.notes, "manifest append failed: ${e.message}")
+                            .joinToString("; "),
+                )
+            return MassiveDailyAggsArchiveResult(
+                record = localFailure,
+                coverage =
+                    CoverageCalculator.forDomainSource(
+                        runCatching { manifestStore.readAll() }.getOrDefault(emptyList()),
+                        MassiveDailyAggsArchiveClient.DOMAIN,
+                        MassiveDailyAggsArchiveClient.SOURCE,
+                    ),
+                observedIngestSucceeded = false,
+                failureNotes = "manifest append failed: ${e.message}",
+            )
+        }
+        return MassiveDailyAggsArchiveResult(
+            record = record,
+            coverage = currentCoverage(),
+            observedIngestSucceeded =
+                observedOk &&
+                    record.observationStatus == ObservationStatus.OBSERVED &&
+                    failureNotes == null,
+            failureNotes = failureNotes,
+        )
+    }
+
+    fun currentCoverage(): CoverageWindow =
+        CoverageCalculator.forDomainSource(
+            manifestStore.readAll(),
+            MassiveDailyAggsArchiveClient.DOMAIN,
+            MassiveDailyAggsArchiveClient.SOURCE,
+        )
+
+    fun readManifest(): List<ManifestRecord> = manifestStore.readAll()
+
+    /**
+     * Audit-only: raw `*.raw` files under this domain/source not referenced by any
+     * manifest `rawPayloadUri`. Never deletes, never promotes to OBSERVED, never invents eligibility.
+     */
+    fun findOrphanRawObjects(): List<Path> {
+        val rawFiles = rawStore.listRawObjects(rawRelativeDir)
+        val referenced =
+            manifestStore
+                .readAll()
+                .mapNotNull { it.rawPayloadUri }
+                .map { Path.of(it).normalize().toAbsolutePath() }
+                .toSet()
+        return rawFiles
+            .map { it.toAbsolutePath().normalize() }
+            .filter { it !in referenced }
+            .sorted()
+    }
+}
