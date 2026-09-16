@@ -11,7 +11,8 @@ import java.time.Instant
 
 /**
  * Official endpoint: GET https://api.massive.com/v3/reference/tickers/{ticker}
- * Optional query: date=YYYY-MM-DD (point-in-time reference snapshot).
+ * Optional query: date=YYYY-MM-DD — Massive provider **as-of selector** for ticker information
+ * (NOT historical knownAt / knowledge-PIT / decision availability / possession time).
  * Auth: query `apiKey` from env [ENV_API_KEY] only.
  *
  * Domain: SECURITY_MASTER (reference metadata — not PRICE).
@@ -38,8 +39,9 @@ class MassiveTickerOverviewArchiveClient(
     }
 
     /**
-     * @param date optional official `date` query (YYYY-MM-DD). Null/blank → latest available
-     *   (omitted from URL and from requestKey).
+     * @param date optional official `date` query (YYYY-MM-DD): provider as-of selector only.
+     *   Null/blank → latest available (omitted from URL and requestKey).
+     *   Never treated as historical knownAt, knowledge-PIT, or eligibility backdating.
      */
     fun executeTickerOverview(
         ticker: String,

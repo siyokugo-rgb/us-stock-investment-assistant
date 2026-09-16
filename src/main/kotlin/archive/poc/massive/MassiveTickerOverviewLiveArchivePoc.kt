@@ -7,7 +7,7 @@ package archive.poc.massive
  * - MASSIVE_API_KEY (required for live; if absent → LIVE_UNVERIFIED, exit 0)
  * - ARCHIVE_ROOT (optional; default ./archive-runtime)
  * - MASSIVE_TICKER (optional; default AAPL)
- * - MASSIVE_OVERVIEW_DATE (optional; YYYY-MM-DD point-in-time; default omit = latest)
+ * - MASSIVE_OVERVIEW_DATE (optional; YYYY-MM-DD provider as-of selector; NOT knownAt/PIT)
  *
  * Never invents knownAt / SecurityId / DailyPrice.currency / MIC / venue / IssuerId.
  * Never joins PRICE ↔ Overview. Never mocks network. Does not create API keys.

@@ -44,6 +44,33 @@ PRICE aggregate archive（`massive.stocks.aggs_1d.unadjusted`）とは **別 sou
 | Optional query | `date=YYYY-MM-DD`（省略時 = latest available） |
 | Auth | env `MASSIVE_API_KEY` → query `apiKey`（PRICE client と同境界） |
 
+### `date` query semantics（PIT / knownAt 分離）
+
+Massive 公式: `date` は ticker information の **provider as-of selector**（その日付時点で利用可能な reference 詳細を返す）。SEC filing 由来 field については period-of-report date との比較例が docs にある。
+
+**禁止:** `date` を次のいずれにも解釈しない。
+
+- historical `knownAt`
+- knowledge-PIT / decision availability
+- possession time の代理
+- `eligibilityBoundaryAt` への遡及根拠
+
+`eligibilityBoundaryAt` は **OBSERVED 成功時の `ingestedAt` のみ**（request `date` や payload の `list_date` / `delisted_utc` / `last_updated_utc` ではない）。
+
+### Delisted / inactive / complete Security Master
+
+公式 Ticker Overview: **active as-of date** の single ticker details。  
+Delisted tickers については docs が **All Tickers + `active=false`** を案内する。
+
+したがって:
+
+| Claim | 本 PoC |
+| --- | --- |
+| Ticker Overview forward raw archive boundary | PASS（本 PoC スコープ） |
+| Complete Security Master | **NO** |
+| Delisted / inactive universe completeness | **NO** |
+| Survivorship-safe master | **NO** |
+
 ### Pagination
 
 公式 Ticker Overview は **single-object** `results`（array / `next_url` ではない）。  
@@ -109,7 +136,8 @@ GET|/v3/reference/tickers/{TICKER}|date={YYYY-MM-DD}
 | `ingestedAt` | archive 確定側時刻 |
 | `eligibilityBoundaryAt` | OBSERVED 成功時のみ `= ingestedAt` |
 
-`list_date` / `delisted_utc` / `last_updated_utc` → knownAt / validFrom / validTo / eligibility **変換禁止**。
+`list_date` / `delisted_utc` / `last_updated_utc` → knownAt / validFrom / validTo / eligibility **変換禁止**。  
+Request query `date` も同様に eligibility / knownAt へ **変換禁止**。
 
 ---
 
@@ -197,6 +225,7 @@ Validation 成功 ≠ domain 採用。
 - coverage OBSERVED only / orphan
 - currency/MIC/FIGI/CIK/SecurityId/DailyPrice/knownAt 非生成
 - next_url Fail-Closed
+- **PIT:** request `date=2024-06-01` + ingest `2026-09-16…` → `eligibilityBoundaryAt == ingestedAt`（payload dates に遡及しない）
 
 既存 Massive PRICE / AV / OpenFIGI / binding regression は full `test` で維持。
 
@@ -209,6 +238,7 @@ Validation 成功 ≠ domain 採用。
 | historical knownAt / CA PIT / Universe | Critical（Real Backtest） |
 | Trading currency 採用（raw evidence ≠ SOLVED） | Critical（DailyPrice） |
 | PRICE ↔ Overview same-vendor join Gate | High（次工程） |
+| Ticker Overview 単独の inactive/delisted completeness 不足 | High |
 | SecurityId / venue / MIC formal model | High / NO-GO |
 | OpenFIGI ↔ Massive FIGI consistency | High（別 Gate） |
 
@@ -219,6 +249,14 @@ Validation 成功 ≠ domain 採用。
 1. **Massive PRICE ↔ Massive Ticker Overview** 同一 vendor provenance join Gate  
 2. そこで ticker consistency / reference eligibility / currency_name evidence / primary_exchange evidence / FIGI evidence の安全な結線を判断  
 3. 本 PoC では join を実装しない
+
+### Join Gate 制約（先取り明記）
+
+次 Gate では **Fail-Closed**:
+
+- Overview が見つからない → **Security 不存在と判断しない**（delisted/inactive coverage 不足の可能性）
+- delisted/inactive completeness 不足を黙認しない
+- **current active ticker 向け forward candidate** と **complete Security Master** を分離して扱う
 
 ---
 

@@ -21,6 +21,7 @@ data class MassiveTickerOverviewValidationOutcome(
  * Does not assign SecurityId / DailyPrice.currency / MIC / venue / IssuerId / knownAt.
  * Does not elevate currency_name / primary_exchange / FIGI / CIK to internal identity.
  * Does not map list_date / delisted_utc / last_updated_utc to validity or knownAt.
+ * Request query `date` (provider as-of selector) is not interpreted as knowledge-PIT or eligibility.
  */
 object MassiveTickerOverviewArchiveValidator {
     fun validate(

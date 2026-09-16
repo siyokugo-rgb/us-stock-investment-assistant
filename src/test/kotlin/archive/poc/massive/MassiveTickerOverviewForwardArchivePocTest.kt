@@ -380,6 +380,41 @@ class MassiveTickerOverviewForwardArchivePocTest {
     }
 
     @Test
+    fun requestDateQueryDoesNotBackdateEligibilityOrKnownAt() {
+        // Provider as-of selector date=2024-06-01 must not become eligibility/knownAt/PIT.
+        val requestDate = "2024-06-01"
+        val body =
+            mutateValid {
+                it.replace(
+                    "\"list_date\": \"1980-12-12\"",
+                    "\"list_date\": \"1980-12-12\"," +
+                        "\"last_updated_utc\": \"2024-05-15T00:00:00Z\"," +
+                        "\"delisted_utc\": \"2024-05-20T00:00:00Z\"",
+                )
+            }
+        val result = archive(body = body, date = requestDate)
+        assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
+        assertEquals(
+            "GET|/v3/reference/tickers/AAPL|date=$requestDate",
+            result.record.requestKey,
+        )
+        val ingestedAt = result.record.ingestedAt
+        val eligibility = result.record.eligibilityBoundaryAt
+        assertNotNull(eligibility)
+        assertEquals(ingestedAt, eligibility)
+        // Archive clock starts 2026-09-16T12:00:… — must not backdate to request or payload fields.
+        assertTrue(ingestedAt.toString().startsWith("2026-09-16"))
+        assertFalse(eligibility.toString().contains("2024-06-01"))
+        assertFalse(eligibility.toString().contains("1980-12-12"))
+        assertFalse(eligibility.toString().contains("2024-05-15"))
+        assertFalse(eligibility.toString().contains("2024-05-20"))
+        assertEquals(ingestedAt, result.coverage.coverageStartAt)
+        assertEquals(ingestedAt, result.coverage.coverageThroughAt)
+        assertFalse(result.coverage.coverageStartAt.toString().contains("2024-06-01"))
+        assertFalse(result.record.toJsonLine().contains("\"knownAt\""))
+    }
+
+    @Test
     fun coverageUsesObservedIngestedAtNotListDateOrLastUpdated() {
         val svc = service()
         val rejected =
