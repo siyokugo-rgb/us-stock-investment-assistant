@@ -78,12 +78,11 @@ Deriver: `TradingCurrencyEvidenceDeriver.derive(priceRecord, allTickersRecord)`.
 
 ### ISO membership 実装方式
 
-`Iso4217AlphabeticCodes` → `java.util.Currency.getAvailableCurrencies()` の `currencyCode` exact set membership。
+`Iso4217AlphabeticCodes` → `java.util.Currency.getInstance(code)`。
 
-- **更新責務:** JVM/Android の available-currency データに追随（手メンテ code list なし）  
-- **必須順序:** regex `^[A-Z]{3}$` を先に通す。lowercase を membership lookup に渡して補正させない  
-- **自動 uppercase repair 禁止**  
-- **禁止:** `Currency.getInstance(code)` 成功を membership とみなさない（Android では `getInstance("ABC")` が成功しうる）
+- **更新責務:** JVM/JDK の ISO 4217 テーブルに追随（手メンテ code list なし）  
+- **必須順序:** regex `^[A-Z]{3}$` を先に通す。lowercase を Currency に渡して補正させない  
+- **自動 uppercase repair 禁止**
 
 CANDIDATE invariant: `canonicalCurrencyCode == rawCurrencySymbol`.
 
