@@ -224,11 +224,11 @@ Fail-Closed。禁止:
 | All Tickers `currency_symbol` = ISO 4217 code（公式明示） | ISO path は **symbol** 側 |
 | Overview docs に `currency_symbol` 無し | Overview `currency_name` alone → ISO 4217 正規化の公式根拠 **不足** |
 
-**判定:** Overview `currency_name` からの無根拠 ISO normalize **禁止**。  
-将来 All Tickers `currency_symbol` 等の明示 ISO field を possession した場合に再評価。  
-必須コア=PRICE+All Tickers（Overview=optional）: [`massive-currency-evidence-gate.md`](massive-currency-evidence-gate.md)。  
-lowercase `currency_symbol` 自動 uppercase 禁止（Fail-Closed）。  
-今回コード実装なし。
+**判定:** Overview `currency_name` alone からの ISO normalize **禁止**（維持）。  
+All Tickers `currency_symbol` raw possession は **実装済み**（[`massive-all-tickers-forward-archive-poc.md`](massive-all-tickers-forward-archive-poc.md)）。  
+現在の multi-source Trading Currency 判定の Source of Truth: [`massive-currency-evidence-gate.md`](massive-currency-evidence-gate.md)（必須コア=PRICE+All Tickers；Overview=optional）。  
+lowercase `currency_symbol` 自動 repair / uppercase 禁止（Fail-Closed）。  
+本ファイルは先行 Gate 記録；判定の更新は SoT 側を優先。
 
 ---
 
