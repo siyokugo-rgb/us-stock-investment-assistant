@@ -153,7 +153,7 @@ object AndroidCoreSmokeLogic {
     }
 
     /**
-     * TradingCurrencyEvidence / Iso4217AlphabeticCodes / java.util.Currency runtime smoke.
+     * TradingCurrencyEvidence / Iso4217AlphabeticCodes / getAvailableCurrencies runtime smoke.
      * Model + membership only — no Deriver on-disk archive flow.
      */
     private fun executeTradingCurrencyEvidenceChecks() {
