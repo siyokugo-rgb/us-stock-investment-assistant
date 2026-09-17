@@ -226,7 +226,8 @@ Fail-Closed。禁止:
 
 **判定:** Overview `currency_name` からの無根拠 ISO normalize **禁止**。  
 将来 All Tickers `currency_symbol` 等の明示 ISO field を possession した場合に再評価。  
-3-source 再評価: [`massive-currency-evidence-gate.md`](massive-currency-evidence-gate.md)。  
+必須コア=PRICE+All Tickers（Overview=optional）: [`massive-currency-evidence-gate.md`](massive-currency-evidence-gate.md)。  
+lowercase `currency_symbol` 自動 uppercase 禁止（Fail-Closed）。  
 今回コード実装なし。
 
 ---
