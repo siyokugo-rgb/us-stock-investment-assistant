@@ -516,6 +516,95 @@ class TradingCurrencyEvidenceTest {
     }
 
     @Test
+    fun candidateDirectConstructionUsdPasses() {
+        val elig = Instant.parse("2026-09-16T12:00:00Z")
+        val evidence =
+            TradingCurrencyEvidence(
+                priceArchiveId = "p1",
+                allTickersArchiveId = "a1",
+                provider = TradingCurrencyEvidence.PROVIDER_MASSIVE,
+                providerTicker = "AAPL",
+                rawCurrencySymbol = "USD",
+                canonicalCurrencyCode = "USD",
+                priceEligibilityBoundaryAt = elig,
+                allTickersEligibilityBoundaryAt = elig,
+                evidenceEligibleAt = elig,
+                allTickersRequestDate = null,
+                temporalApplicability = TradingCurrencyTemporalApplicability.UNRESOLVED,
+                status = TradingCurrencyEvidenceStatus.CANDIDATE,
+                reason = null,
+            )
+        assertEquals(TradingCurrencyEvidenceStatus.CANDIDATE, evidence.status)
+        assertEquals("USD", evidence.canonicalCurrencyCode)
+    }
+
+    @Test
+    fun candidateDirectConstructionAbcFailsMembership() {
+        val elig = Instant.parse("2026-09-16T12:00:00Z")
+        assertFailsWith<IllegalArgumentException> {
+            TradingCurrencyEvidence(
+                priceArchiveId = "p1",
+                allTickersArchiveId = "a1",
+                provider = TradingCurrencyEvidence.PROVIDER_MASSIVE,
+                providerTicker = "AAPL",
+                rawCurrencySymbol = "ABC",
+                canonicalCurrencyCode = "ABC",
+                priceEligibilityBoundaryAt = elig,
+                allTickersEligibilityBoundaryAt = elig,
+                evidenceEligibleAt = elig,
+                allTickersRequestDate = null,
+                temporalApplicability = TradingCurrencyTemporalApplicability.UNRESOLVED,
+                status = TradingCurrencyEvidenceStatus.CANDIDATE,
+                reason = null,
+            )
+        }
+    }
+
+    @Test
+    fun candidateDirectConstructionLowercaseUsdFailsRegex() {
+        val elig = Instant.parse("2026-09-16T12:00:00Z")
+        assertFailsWith<IllegalArgumentException> {
+            TradingCurrencyEvidence(
+                priceArchiveId = "p1",
+                allTickersArchiveId = "a1",
+                provider = TradingCurrencyEvidence.PROVIDER_MASSIVE,
+                providerTicker = "AAPL",
+                rawCurrencySymbol = "usd",
+                canonicalCurrencyCode = "usd",
+                priceEligibilityBoundaryAt = elig,
+                allTickersEligibilityBoundaryAt = elig,
+                evidenceEligibleAt = elig,
+                allTickersRequestDate = null,
+                temporalApplicability = TradingCurrencyTemporalApplicability.UNRESOLVED,
+                status = TradingCurrencyEvidenceStatus.CANDIDATE,
+                reason = null,
+            )
+        }
+    }
+
+    @Test
+    fun candidateDirectConstructionCanonicalMismatchFails() {
+        val elig = Instant.parse("2026-09-16T12:00:00Z")
+        assertFailsWith<IllegalArgumentException> {
+            TradingCurrencyEvidence(
+                priceArchiveId = "p1",
+                allTickersArchiveId = "a1",
+                provider = TradingCurrencyEvidence.PROVIDER_MASSIVE,
+                providerTicker = "AAPL",
+                rawCurrencySymbol = "USD",
+                canonicalCurrencyCode = "CAD",
+                priceEligibilityBoundaryAt = elig,
+                allTickersEligibilityBoundaryAt = elig,
+                evidenceEligibleAt = elig,
+                allTickersRequestDate = null,
+                temporalApplicability = TradingCurrencyTemporalApplicability.UNRESOLVED,
+                status = TradingCurrencyEvidenceStatus.CANDIDATE,
+                reason = null,
+            )
+        }
+    }
+
+    @Test
     fun doesNotGenerateDailyPriceCurrencySecurityIdOrMic() {
         val evidence =
             TradingCurrencyEvidenceDeriver.derive(priceRecord(), allTickersRecord())

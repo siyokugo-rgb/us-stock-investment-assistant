@@ -98,6 +98,10 @@ data class TradingCurrencyEvidence(
                 require(CANONICAL_ISO_ALPHA.matches(rawCurrencySymbol!!)) {
                     "CANDIDATE rawCurrencySymbol must match ^[A-Z]{3}$"
                 }
+                require(Iso4217AlphabeticCodes.isAlphabeticMember(rawCurrencySymbol)) {
+                    "CANDIDATE rawCurrencySymbol must be an ISO 4217 alphabetic member " +
+                        "(model invariant; not Deriver-only)"
+                }
                 require(canonicalCurrencyCode == rawCurrencySymbol) {
                     "CANDIDATE canonicalCurrencyCode must equal rawCurrencySymbol " +
                         "(no normalize/repair)"

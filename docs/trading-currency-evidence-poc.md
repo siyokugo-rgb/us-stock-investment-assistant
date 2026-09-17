@@ -86,6 +86,8 @@ Deriver: `TradingCurrencyEvidenceDeriver.derive(priceRecord, allTickersRecord)`.
 
 CANDIDATE invariant: `canonicalCurrencyCode == rawCurrencySymbol`.
 
+**CANDIDATE model invariant itself enforces ISO 4217 membership**（`Iso4217AlphabeticCodes`）；Deriver validation alone に依存しない。`ABC` / `usd` の direct construction は Fail-Closed。
+
 ---
 
 ## temporal / date
