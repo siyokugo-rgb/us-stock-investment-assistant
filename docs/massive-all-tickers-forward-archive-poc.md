@@ -256,7 +256,8 @@ Live: `./gradlew massiveAllTickersForwardArchivePoc`（key 無し → LIVE_UNVER
 
 本 PoC PASS 後:
 
-**Currency Evidence Gate** — Massive PRICE + Ticker Overview + All Tickers を結び、`currency_name` + `currency_symbol` + same-vendor provenance + temporal applicability を評価。
+**Currency Evidence Gate** — 必須コア PRICE + All Tickers（Overview = optional corroboration）:  
+[`massive-currency-evidence-gate.md`](massive-currency-evidence-gate.md)
 
 TradingCurrencyEvidence class はその Gate 後に必要性を再評価。本 PoC では実装しない。
 
