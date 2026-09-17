@@ -6,6 +6,9 @@ import android.util.TypedValue;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import compat.AndroidCoreSmokeLogic;
+import java.util.Currency;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Minimal framework-only Activity for Android Core Compatibility Smoke.
@@ -13,8 +16,7 @@ import compat.AndroidCoreSmokeLogic;
  * in the same Gradle build as the root {@code kotlin("jvm")} project.
  * No Compose / AppCompat / Material.
  *
- * PR35 RUNTIME DIAG: temporary instrumentation to isolate unexplained on-device "false"
- * display against Release APK bytecode that returns PASS/FAIL strings only.
+ * PR35 RUNTIME DIAG: temporary instrumentation only. Does not change Iso4217AlphabeticCodes.
  */
 public final class MainActivity extends Activity {
     private static final String BUILD_MARKER = "PR35 RUNTIME DIAG";
@@ -46,6 +48,9 @@ public final class MainActivity extends Activity {
         }
         screen.append("\n\n");
 
+        appendAvailableCurrencyProbe(screen);
+        screen.append('\n');
+
         try {
             String result = AndroidCoreSmokeLogic.run();
             screen.append("RESULT=[").append(result).append("]\n");
@@ -74,5 +79,41 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(textView);
         setContentView(scroll);
+    }
+
+    /**
+     * Device probe only: compare getAvailableCurrencies() membership vs getInstance("ABC").
+     * Does not alter Iso4217AlphabeticCodes / TradingCurrencyEvidence contracts.
+     */
+    private static void appendAvailableCurrencyProbe(StringBuilder screen) {
+        screen.append("CURRENCY_PROBE\n");
+        try {
+            Set<String> codes = new HashSet<>();
+            for (Currency currency : Currency.getAvailableCurrencies()) {
+                codes.add(currency.getCurrencyCode());
+            }
+            screen.append("AVAILABLE_SIZE=").append(codes.size()).append('\n');
+            screen.append("AVAILABLE_USD=").append(codes.contains("USD")).append('\n');
+            screen.append("AVAILABLE_ABC=").append(codes.contains("ABC")).append('\n');
+        } catch (Throwable t) {
+            screen.append("AVAILABLE_USD=error\n");
+            screen.append("AVAILABLE_ABC=error\n");
+            screen.append("availableCurrenciesError=")
+                    .append(t.getClass().getName())
+                    .append(": ")
+                    .append(t.getMessage() == null ? "(no message)" : t.getMessage())
+                    .append('\n');
+        }
+
+        try {
+            Currency.getInstance("ABC");
+            screen.append("GET_INSTANCE_ABC=accepted\n");
+        } catch (IllegalArgumentException rejected) {
+            screen.append("GET_INSTANCE_ABC=rejected\n");
+        } catch (Throwable t) {
+            screen.append("GET_INSTANCE_ABC=error:")
+                    .append(t.getClass().getName())
+                    .append('\n');
+        }
     }
 }
