@@ -8,11 +8,13 @@ android {
 
     defaultConfig {
         applicationId 'com.usstock.androidsmoke'
+        // Temporary PR35 runtime diagnosis only — isolate from prior Release APK install.
+        applicationIdSuffix '.pr35diag'
         // smoke-only provisional condition (NOT a product minSdk decision)
         minSdk 26
         targetSdk 35
-        versionCode 1
-        versionName '0.1.0-android-core-smoke'
+        versionCode 2
+        versionName '0.1.0-android-core-smoke-pr35-diag'
     }
 
     compileOptions {
