@@ -58,7 +58,24 @@ Massive Stocks **All Tickers**（`GET /v3/reference/tickers`）の HTTP response
 | `currency_symbol` | “The **ISO 4217 code** of the currency that this asset is traded with.” |
 
 Overview は `currency_name` のみ。All Tickers が ISO path の公式根拠。  
-本 PoC: **raw 保持のみ**。uppercase normalize / `DailyPrice.currency` 生成 **禁止**。
+本 PoC: **provider raw value 保持のみ**。uppercase normalize / `DailyPrice.currency` 生成 **禁止**。
+
+**明示:** OBSERVED raw `currency_symbol` possession ≠ validated ISO 4217 domain value。  
+fixture / test で lowercase `"usd"` を残しても、それは raw 非正規化の例であり「valid ISO code として採択した」意味ではない。
+
+### `active` request filter ↔ response 整合
+
+`requestedActive != null` のとき Fail-Closed:
+
+| Request | Response row `active` | Outcome |
+| --- | --- | --- |
+| `active=false` | `true` | REJECTED_VALIDATION |
+| `active=true` | `false` | REJECTED_VALIDATION |
+| explicit filter | missing / null | REJECTED_VALIDATION（request から row state を推測しない） |
+| `active=false` | `false` | OBSERVED（他条件満たす場合） |
+| omit (`null`) | true/false/missing | 既存 optional evidence 契約（型検査のみ） |
+
+mismatch / missing でも raw/hash は immutable 保持。eligibility=null。coverage に含めない。
 
 ### `active=false` / delisted
 
@@ -66,7 +83,7 @@ Overview は `currency_name` のみ。All Tickers が ISO path の公式根拠�
 
 | Claim | 本 PoC |
 | --- | --- |
-| inactive observation raw archive | PASS（filter + field 検証） |
+| inactive observation raw archive | PASS（filter + **response active 整合** + field 検証） |
 | Complete Security Master / delisted universe completeness | **NO** |
 | Survivorship-safe master | **NO** |
 
@@ -136,6 +153,7 @@ GET|/v3/reference/tickers|market=stocks[|ticker=…][|active=…][|date=…]|lim
 - `next_url` 無し
 - ticker filter 指定時: 全 `results[].ticker` 一致
 - `market=stocks` 契約: present なら `results[].market=stocks`
+- **`active` filter 指定時:** 全 row の `active` boolean が request と一致；欠損も REJECTED
 - field 型検査: `active` boolean；`currency_*` / FIGI / exchange / timestamps string；blank string reject
 - raw immutable + manifest append 成功
 
@@ -200,17 +218,20 @@ provider `date` / `last_updated_utc` / `delisted_utc` は coverage に使わな�
 9. ticker mismatch  
 10. wrong `currency_symbol` type  
 11. blank `currency_symbol`  
-12. valid `currency_symbol` raw 保持（no normalize）  
-13. `active=false` 保持  
-14. `delisted_utc` 保持  
-15. date query ≠ eligibility backdate  
-16. `next_url` → REJECTED  
-17. first page coverage 禁止  
-18. empty results → REJECTED not MISSING  
-19. duplicate / revisionCandidate  
-20. coverage OBSERVED only  
-21–24. DailyPrice.currency / SecurityId / knownAt / MIC 生成なし  
-25–27. PRICE / Overview / binding regression（既存 suite）
+12. non-canonical `currency_symbol` raw 保持（≠ ISO domain adoption）  
+13. `active=false` + response `active=false` → OBSERVED  
+14. `active=false` + response `active=true` → REJECTED  
+15. `active=true` + response `active=false` → REJECTED  
+16. explicit `active` + missing field → REJECTED  
+17. `active` omit → optional evidence 維持  
+18. date query ≠ eligibility backdate  
+19. `next_url` → REJECTED  
+20. first page coverage 禁止  
+21. empty results → REJECTED not MISSING  
+22. duplicate / revisionCandidate  
+23. coverage OBSERVED only  
+24–27. DailyPrice.currency / SecurityId / knownAt / MIC 生成なし  
+28–30. PRICE / Overview / binding regression（既存 suite）
 
 Live: `./gradlew massiveAllTickersForwardArchivePoc`（key 無し → LIVE_UNVERIFIED）。
 

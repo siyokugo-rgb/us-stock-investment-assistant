@@ -404,7 +404,9 @@ class MassiveAllTickersForwardArchivePocTest {
     }
 
     @Test
-    fun validCurrencySymbolIsPreservedAsRawEvidenceNotNormalized() {
+    fun nonCanonicalCurrencySymbolIsPreservedAsRawEvidenceNotIsoDomainValue() {
+        // Provider may emit lowercase; official field *means* ISO 4217, but this PoC
+        // only retains exact raw bytes. OBSERVED raw evidence ≠ validated ISO domain value.
         val body =
             mutateValid {
                 it.replace("\"currency_symbol\": \"USD\"", "\"currency_symbol\": \"usd\"")
@@ -412,11 +414,12 @@ class MassiveAllTickersForwardArchivePocTest {
         val result = archive(body = body)
         assertEquals(ObservationStatus.OBSERVED, result.record.observationStatus)
         assertTrue(result.record.observedFields.contains("currency_symbol"))
-        // Provider raw kept; no uppercase normalize into domain.
+        // Provider raw kept; no uppercase normalize into DailyPrice.currency / ISO domain.
         val onDisk = String(Files.readAllBytes(Path.of(result.record.rawPayloadUri!!)))
         assertTrue(onDisk.contains("\"currency_symbol\": \"usd\""))
         assertFalse(result.record.notes!!.contains("DailyPrice.currency generated"))
         assertTrue(result.record.notes!!.contains("currency_symbol≠DailyPrice.currency"))
+        assertTrue(result.record.notes!!.contains("ISO 4217 raw only; no normalize"))
     }
 
     @Test
@@ -438,6 +441,68 @@ class MassiveAllTickersForwardArchivePocTest {
             requestKey(t = "DEAD", active = false),
             result.record.requestKey,
         )
+    }
+
+    @Test
+    fun requestedActiveFalseWithResponseActiveTrueIsRejected() {
+        val body =
+            mutateValid {
+                // validBody has active=true; request filter active=false must Fail-Close.
+                it
+            }
+        val result = archive(body = body, active = false)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertNotNull(result.record.rawPayloadUri)
+        assertEquals(Sha256Hex.of(body), result.record.rawPayloadHash)
+        assertTrue(result.record.notes!!.contains("active mismatch"))
+        assertEquals(0, result.coverage.observedCount)
+    }
+
+    @Test
+    fun requestedActiveTrueWithResponseActiveFalseIsRejected() {
+        val result =
+            archive(
+                body = inactiveBody.copyOf(),
+                t = "DEAD",
+                active = true,
+            )
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertNotNull(result.record.rawPayloadUri)
+        assertEquals(Sha256Hex.of(inactiveBody), result.record.rawPayloadHash)
+        assertTrue(result.record.notes!!.contains("active mismatch"))
+        assertEquals(0, result.coverage.observedCount)
+    }
+
+    @Test
+    fun requestedActiveFalseWithMissingActiveFieldIsRejected() {
+        val body =
+            mutateValid {
+                it.replace("\"active\": true,", "")
+            }
+        val result = archive(body = body, active = false)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertNotNull(result.record.rawPayloadUri)
+        assertEquals(Sha256Hex.of(body), result.record.rawPayloadHash)
+        assertTrue(result.record.notes!!.contains("active missing/null"))
+        assertEquals(0, result.coverage.observedCount)
+    }
+
+    @Test
+    fun requestedActiveNullKeepsOptionalActiveEvidenceContract() {
+        val withTrue = archive(body = validBody.copyOf(), active = null)
+        assertEquals(ObservationStatus.OBSERVED, withTrue.record.observationStatus)
+        assertTrue(withTrue.record.observedFields.contains("active"))
+
+        val withoutActive =
+            mutateValid {
+                it.replace("\"active\": true,", "")
+            }
+        val missingOk = archive(body = withoutActive, active = null)
+        assertEquals(ObservationStatus.OBSERVED, missingOk.record.observationStatus)
+        assertFalse(missingOk.record.observedFields.contains("active"))
     }
 
     @Test

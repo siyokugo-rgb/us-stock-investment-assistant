@@ -88,7 +88,7 @@ class MassiveAllTickersForwardArchiveService(
 
     private fun finalize(
         ticker: String?,
-        @Suppress("UNUSED_PARAMETER") active: Boolean?,
+        active: Boolean?,
         @Suppress("UNUSED_PARAMETER") date: String?,
         possession: MassiveHttpPossession,
     ): MassiveAllTickersArchiveResult {
@@ -152,6 +152,7 @@ class MassiveAllTickersForwardArchiveService(
                 httpStatus = httpStatus,
                 bodyBytes = body,
                 requestedTicker = ticker,
+                requestedActive = active,
             )
         val intendedStatus =
             when {

@@ -27,14 +27,20 @@ data class MassiveAllTickersValidationOutcome(
  * Fail-Closed validation for Massive Stocks All Tickers possession.
  *
  * HTTP 200 alone is not OBSERVED. Empty results, error envelopes, ticker mismatch,
- * wrong field types, and any string `next_url` must not be promoted.
+ * active filter mismatch, wrong field types, and any string `next_url` must not be promoted.
  *
  * Empty `results` with complete HTTP body → REJECTED_VALIDATION (not MISSING):
  * design contract reserves MISSING for no-body possession; PRICE empty-results
  * uses the same REJECTED path.
  *
+ * When [requestedActive] is non-null, every result row must carry a boolean `active`
+ * equal to that filter. Missing/null `active` under an explicit filter is Fail-Closed
+ * (do not infer row state from the request alone). When [requestedActive] is null,
+ * `active` remains optional raw evidence.
+ *
  * Does not assign SecurityId / DailyPrice.currency / MIC / venue / IssuerId / knownAt.
  * Does not normalize currency_symbol to uppercase ISO forms.
+ * OBSERVED raw currency_symbol possession ≠ validated ISO 4217 domain value.
  * Does not map delisted_utc / last_updated_utc / request date to eligibility or knownAt.
  */
 object MassiveAllTickersArchiveValidator {
@@ -42,6 +48,7 @@ object MassiveAllTickersArchiveValidator {
         httpStatus: Int,
         bodyBytes: ByteArray,
         requestedTicker: String?,
+        requestedActive: Boolean? = null,
         requestedMarket: String = MassiveAllTickersArchiveClient.MARKET_STOCKS,
     ): MassiveAllTickersValidationOutcome {
         if (bodyBytes.isEmpty()) return reject("empty body")
@@ -151,8 +158,22 @@ object MassiveAllTickersArchiveValidator {
             }
 
             when (val activeNode = obj.map["active"]) {
-                null, is ArchiveJson.Null -> Unit
+                null, is ArchiveJson.Null -> {
+                    if (requestedActive != null) {
+                        return reject(
+                            "results[$idx].active missing/null while requestedActive=" +
+                                "$requestedActive; OBSERVED forbidden " +
+                                "(do not infer active state from request filter alone)",
+                        )
+                    }
+                }
                 is ArchiveJson.Bool -> {
+                    if (requestedActive != null && activeNode.value != requestedActive) {
+                        return reject(
+                            "active mismatch: response=${activeNode.value} " +
+                                "requestedActive=$requestedActive at results[$idx]",
+                        )
+                    }
                     actives += activeNode.value
                     fields += "active"
                 }
@@ -236,13 +257,15 @@ object MassiveAllTickersArchiveValidator {
             observedFields = fields.toList().sorted(),
             notes =
                 "massive All Tickers ok; raw reference evidence only; " +
-                    "currency_symbol≠DailyPrice.currency (ISO 4217 raw only; no normalize); " +
+                    "currency_symbol≠DailyPrice.currency (ISO 4217 raw only; no normalize; " +
+                    "OBSERVED raw ≠ validated ISO domain value); " +
                     "currency_name≠DailyPrice.currency; " +
                     "primary_exchange≠venue resolved / MIC / SecurityId; " +
                     "composite_figi/share_class_figi≠SecurityId; " +
                     "cik≠IssuerId; ticker≠SecurityId; " +
                     "delisted_utc/last_updated_utc≠knownAt/eligibility; " +
                     "date query≠knownAt/eligibility; " +
+                    "active filter matched when requested; " +
                     "externalIdentifier not auto-set; " +
                     "pagination not followed; first page≠complete universe coverage; " +
                     "Trading Currency / DailyPrice / SecurityId not solved",
