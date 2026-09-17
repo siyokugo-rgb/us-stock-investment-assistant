@@ -48,7 +48,9 @@ Massive PRICE raw archive
        Overview: OPTIONAL_CORROBORATION（Venue/MIC/FIGI/identity 向け再利用）
 ```
 
-**まだ進まないもの:** TradingCurrencyEvidence 実装、`DailyPrice.currency`、DailyPrice、SecurityId、MIC/Venue resolved、bar-level attribution、past backfill、OpenFIGI auto-join、Backtest、Kotlin。
+**まだ進まないもの:** `DailyPrice.currency`、DailyPrice、SecurityId、MIC/Venue resolved、bar-level attribution、past backfill、OpenFIGI auto-join、Backtest。
+
+**実装済み（派生 PoC）:** [`trading-currency-evidence-poc.md`](trading-currency-evidence-poc.md) — `TradingCurrencyEvidence`（PRICE + All Tickers；Overview 未入力）。
 
 ---
 
