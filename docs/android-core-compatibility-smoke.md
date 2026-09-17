@@ -25,29 +25,6 @@ This is **not** Android production implementation.
   - `dividend.DividendEvent` / `DividendType`
   - `fundamentals.RawFinancialFact` / `FactPeriod` / `NormalizedFinancialConcept`
   - `universe.poc.UniverseMembershipPocQuery.membersAt` (synthetic snapshot fixture)
-  - `archive.poc.binding.Iso4217AlphabeticCodes` + `Currency.getAvailableCurrencies()` membership
-  - `archive.poc.binding.TradingCurrencyEvidence` CANDIDATE direct construction
-    (`USD`, `temporalApplicability=UNRESOLVED`; lowercase `usd` regex reject)
-
-## TradingCurrencyEvidence Android smoke (PR #34 follow-up)
-
-| Check | Expectation |
-| --- | --- |
-| `Iso4217AlphabeticCodes.isAlphabeticMember("USD")` | true |
-| `Iso4217AlphabeticCodes.isAlphabeticMember("ABC")` | false |
-| `TradingCurrencyEvidence` CANDIDATE construct with `USD` | success |
-| `status` / `canonicalCurrencyCode` / `temporalApplicability` | CANDIDATE / USD / UNRESOLVED |
-| `CANONICAL_ISO_ALPHA.matches("usd")` | false（no lowercase repair） |
-| `TradingCurrencyEvidenceDeriver` on-disk archive | **not** in this smoke |
-
-### Compile/Package vs Runtime
-
-| Layer | Status |
-| --- | --- |
-| Compile / `:android-smoke:assembleDebug` | record after CI on this branch |
-| Device/emulator runtime | **UNVERIFIED** until Activity shows `ANDROID CORE SMOKE: PASS` |
-
-Do not conflate assembleDebug PASS with runtime PASS.
 
 ## What this smoke does **not** verify
 
@@ -57,8 +34,6 @@ Do not conflate assembleDebug PASS with runtime PASS.
 - Backtest / Strategy / Corporate Action / 楽天証券
 - Product `minSdk` decision
 - That PoC HTTP clients (`java.net.http.HttpClient`) work on Android runtime
-- `TradingCurrencyEvidenceDeriver` on-disk archive flow on Android
-- DailyPrice.currency adoption / SecurityId / MIC / Venue / temporal resolution
 
 ## Toolchain (chosen without Wrapper change)
 
@@ -119,23 +94,26 @@ PoC code was **not** deleted or excluded for smoke convenience.
 
 | Check | Result |
 | --- | --- |
-| JVM core regression `./gradlew test --rerun-tasks` | record on this branch |
-| Android compile / DEX / `assembleDebug` | record on this branch |
+| JVM core regression `./gradlew test --rerun-tasks` | **PASS** — 229 tests passed, 0 failed |
+| Android compile | **PASS** |
+| DEX / `assembleDebug` | **PASS** |
 | APK path (not committed) | `android-smoke/build/outputs/apk/debug/android-smoke-debug.apk` |
-| `adb devices` / emulator | none assumed in Cloud Agent |
+| `lintDebug` | **PASS** (0 errors, 2 warnings: `DataExtractionRules`, `MissingApplicationIcon`) |
+| `adb devices` | none attached |
 | Device runtime | **UNVERIFIED** |
-| JVM unit execution of smoke logic | `AndroidCoreSmokeLogicTest` |
+| JVM unit execution of smoke logic | **PASS** (`AndroidCoreSmokeLogicTest`) |
 
-### Later device check (user PC + device; not automated here)
+### Later device check (user PC + Xperia; not automated here)
 
 ```bash
+# local.properties: sdk.dir=<Android SDK>
 ./gradlew :android-smoke:assembleDebug
+adb devices
 adb install -r android-smoke/build/outputs/apk/debug/android-smoke-debug.apk
 adb shell am start -n com.usstock.androidsmoke/.MainActivity
 # Expect on-screen text: ANDROID CORE SMOKE: PASS
 ```
 
-FAIL 表示またはクラッシュなら次 Gate へ進まない。
 ## Separated verdict
 
 1. JVM core regression: **PASS**

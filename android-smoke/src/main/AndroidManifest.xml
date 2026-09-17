@@ -3,7 +3,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="Android Core Smoke PR35 FIX DIAG"
+        android:label="Android Core Smoke"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
