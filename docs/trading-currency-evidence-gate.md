@@ -225,8 +225,8 @@ Fail-Closed。禁止:
 | Overview docs に `currency_symbol` 無し | Overview `currency_name` alone → ISO 4217 正規化の公式根拠 **不足** |
 
 **判定:** Overview `currency_name` からの無根拠 ISO normalize **禁止**。  
-将来 All Tickers `currency_symbol` 等の明示 ISO field を possession した場合に再評価。  
-今回コード実装なし。
+All Tickers `currency_symbol` raw possession: [`massive-all-tickers-forward-archive-poc.md`](massive-all-tickers-forward-archive-poc.md)。  
+Overview `currency_name` alone からの ISO normalize は依然禁止。Currency Evidence Gate で再評価。
 
 ---
 

@@ -60,7 +60,8 @@ Massive 公式: `date` は ticker information の **provider as-of selector**（
 ### Delisted / inactive / complete Security Master
 
 公式 Ticker Overview: **active as-of date** の single ticker details。  
-Delisted tickers については docs が **All Tickers + `active=false`** を案内する。
+Delisted tickers については docs が **All Tickers + `active=false`** を案内する。  
+All Tickers forward archive PoC: [`massive-all-tickers-forward-archive-poc.md`](massive-all-tickers-forward-archive-poc.md)（complete master ではない）。
 
 したがって:
 

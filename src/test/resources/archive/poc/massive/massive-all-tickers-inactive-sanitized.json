@@ -1,0 +1,23 @@
+{
+  "count": 1,
+  "request_id": "synthetic-all-tickers-inactive-request-id",
+  "results": [
+    {
+      "active": false,
+      "cik": "0000000001",
+      "composite_figi": "BBG000ZZZZZ1",
+      "currency_name": "usd",
+      "currency_symbol": "USD",
+      "delisted_utc": "2020-01-15T00:00:00Z",
+      "last_updated_utc": "2020-01-16T00:00:00Z",
+      "locale": "us",
+      "market": "stocks",
+      "name": "Delisted Example Corp",
+      "primary_exchange": "XNAS",
+      "share_class_figi": "BBG001ZZZZZ1",
+      "ticker": "DEAD",
+      "type": "CS"
+    }
+  ],
+  "status": "OK"
+}
