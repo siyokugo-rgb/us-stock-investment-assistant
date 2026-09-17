@@ -25,7 +25,7 @@ This is **not** Android production implementation.
   - `dividend.DividendEvent` / `DividendType`
   - `fundamentals.RawFinancialFact` / `FactPeriod` / `NormalizedFinancialConcept`
   - `universe.poc.UniverseMembershipPocQuery.membersAt` (synthetic snapshot fixture)
-  - `archive.poc.binding.Iso4217AlphabeticCodes` + `java.util.Currency` membership
+  - `archive.poc.binding.Iso4217AlphabeticCodes` + `Currency.getAvailableCurrencies()` membership
   - `archive.poc.binding.TradingCurrencyEvidence` CANDIDATE direct construction
     (`USD`, `temporalApplicability=UNRESOLVED`; lowercase `usd` regex reject)
 
