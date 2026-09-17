@@ -1,0 +1,53 @@
+name: Android Smoke APK
+
+# Builds unsigned debug APK for android-smoke and uploads as a downloadable artifact.
+# No release signing, keystore, emulator, or secrets.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "android-smoke/**"
+      - "src/main/kotlin/compat/**"
+      - "src/main/kotlin/archive/poc/binding/**"
+      - ".github/workflows/android-smoke-apk.yml"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # Do not install the obsolete sdkmanager package "tools" (default of this action).
+      # Install only what AGP/compileSdk 35 needs for :android-smoke:assembleDebug.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-35 build-tools;35.0.0
+
+      - name: Assemble android-smoke debug APK
+        run: ./gradlew --no-daemon :android-smoke:assembleDebug
+
+      - name: Upload android-smoke-debug.apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-smoke-debug-apk
+          path: android-smoke/build/outputs/apk/debug/android-smoke-debug.apk
+          if-no-files-found: error
+          retention-days: 14
