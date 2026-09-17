@@ -1,5 +1,9 @@
 package compat
 
+import archive.poc.binding.Iso4217AlphabeticCodes
+import archive.poc.binding.TradingCurrencyEvidence
+import archive.poc.binding.TradingCurrencyEvidenceStatus
+import archive.poc.binding.TradingCurrencyTemporalApplicability
 import dividend.DividendEvent
 import dividend.DividendType
 import fundamentals.FactPeriod
@@ -28,6 +32,7 @@ import java.time.LocalDate
  * This is a smoke packaging choice — not a production Android architecture.
  *
  * Does not call Provider HTTP clients or live APIs.
+ * Does not run TradingCurrencyEvidenceDeriver on-disk archive flow (separate integration).
  */
 object AndroidCoreSmokeLogic {
     @JvmStatic
@@ -142,6 +147,53 @@ object AndroidCoreSmokeLogic {
         }
         require(membership.memberExternalIds == setOf("A", "B")) {
             "UniverseMembershipPocQuery members=${membership.memberExternalIds}"
+        }
+
+        executeTradingCurrencyEvidenceChecks()
+    }
+
+    /**
+     * TradingCurrencyEvidence / Iso4217AlphabeticCodes / java.util.Currency runtime smoke.
+     * Model + membership only — no Deriver on-disk archive flow.
+     */
+    private fun executeTradingCurrencyEvidenceChecks() {
+        require(Iso4217AlphabeticCodes.isAlphabeticMember("USD")) {
+            "Iso4217AlphabeticCodes USD membership expected true"
+        }
+        require(!Iso4217AlphabeticCodes.isAlphabeticMember("ABC")) {
+            "Iso4217AlphabeticCodes ABC membership expected false"
+        }
+        require(!TradingCurrencyEvidence.CANONICAL_ISO_ALPHA.matches("usd")) {
+            "lowercase usd must not match canonical ^[A-Z]{3}$ (no auto-repair)"
+        }
+
+        val elig = Instant.parse("2026-09-17T03:00:00Z")
+        val candidate =
+            TradingCurrencyEvidence(
+                priceArchiveId = "android-smoke-price",
+                allTickersArchiveId = "android-smoke-all-tickers",
+                provider = TradingCurrencyEvidence.PROVIDER_MASSIVE,
+                providerTicker = "AAPL",
+                rawCurrencySymbol = "USD",
+                canonicalCurrencyCode = "USD",
+                priceEligibilityBoundaryAt = elig,
+                allTickersEligibilityBoundaryAt = elig,
+                evidenceEligibleAt = elig,
+                allTickersRequestDate = null,
+                temporalApplicability = TradingCurrencyTemporalApplicability.UNRESOLVED,
+                status = TradingCurrencyEvidenceStatus.CANDIDATE,
+                reason = null,
+            )
+        require(candidate.status == TradingCurrencyEvidenceStatus.CANDIDATE) {
+            "TradingCurrencyEvidence status expected CANDIDATE"
+        }
+        require(candidate.canonicalCurrencyCode == "USD") {
+            "TradingCurrencyEvidence canonicalCurrencyCode expected USD"
+        }
+        require(
+            candidate.temporalApplicability == TradingCurrencyTemporalApplicability.UNRESOLVED,
+        ) {
+            "TradingCurrencyEvidence temporalApplicability expected UNRESOLVED"
         }
     }
 
