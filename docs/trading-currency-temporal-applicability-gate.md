@@ -287,16 +287,11 @@ CONDITIONAL にもしない。根拠不足なら NO-GO を維持する方針に�
 
 | Option | Select? |
 | --- | --- |
-| **A. Security identity / ticker-reuse Gate Review（docs only）** | **YES** |
-| B. Multi-evidence same-as-of CONFLICT PoC | 後続（A の後でも可） |
-| C. `temporalApplicability` enum 拡張 | **NO**（今回不採用） |
-| D. DailyPrice.currency 実装 | **NO** |
-| E. validity interval 実装 | **NO**（導出不可） |
+| **A. Security identity / ticker-reuse Gate Review（docs only）** | **DONE** — [`security-identity-ticker-reuse-gate.md`](security-identity-ticker-reuse-gate.md) |
+| **次:** Security identity continuity evidence 最小 PoC | **YES**（identity Gate 選定） |
 
-**選定理由:**
-Temporal applicability を UNRESOLVED より先へ進めるには、異なる as-of の同 ticker evidence を同一 Security の連続履歴として扱えるかが **blocking**。
-interval / bar-level / Real Backtest / DailyPrice.currency は identity なしでは開けない。
-次は実装ではなく **Security identity / ticker-reuse Gate Review** のみ。
+**選定理由（Temporal Gate 時点）:** identity blocking。
+**Identity Gate 後の次工程:** Security identity continuity evidence 最小 PoC（**synthetic-first**；SecurityId / SecurityIdentifier / knownAt 生成なし；synthetic PASS ≠ real cross-time PASS）。
 
 ---
 
