@@ -332,23 +332,21 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 
 | Option | Select? |
 | --- | --- |
-| **A. Security identity continuity evidence 最小 PoC（synthetic-first）** | **YES** |
-| B. Ticker Event archive PoC | 後続（change effective date が A で不足と判明したら） |
-| C. FIGI consistency PoC（Massive↔OpenFIGI） | A の後でも可 |
-| D. Share-class-only PoC | A に内包 |
+| **A. Security identity continuity evidence 最小 PoC（synthetic-first）** | **DONE** → [`security-identity-continuity-evidence-poc.md`](security-identity-continuity-evidence-poc.md) |
+| **B. Real multi-as-of Massive continuity evidence 検証（Overview dated snapshots）** | **YES（次工程候補）** |
+| C. Ticker Event archive PoC | 後続（change effective date が不足と判明したら） |
+| D. FIGI consistency PoC（Massive↔OpenFIGI） | B の後でも可 |
 | E. Multi-evidence conflict PoC（currency） | 別軸 |
 
-**A の正確な範囲:**
+**A（完了）の範囲:**
 
 1. 既存 archive model / requestKey / validator を **再利用**
 2. **synthetic fixtures** で T1/T2 cross-time cases を構築
-3. `CONTINUITY_CANDIDATE` / `RECYCLE_CANDIDATE` / `UNRESOLVED` / `CONFLICT` を Fail-Closed 検証
+3. `CONTINUITY_CANDIDATE` / `TICKER_CHANGE_CANDIDATE` / `RECYCLE_CANDIDATE` / `UNRESOLVED` / `CONFLICT` を Fail-Closed 検証
 4. `SecurityId` / `SecurityIdentifier` / `knownAt` / validity **生成なし**
-5. 現行 sanitized test resources だけでは複数 as-of の **real** cross-time continuity を証明できない
-6. 実 provider の複数 as-of archive が使える場合は別途 live/evidence 確認してよいが、**synthetic PASS ≠ real cross-time evidence PASS**
+5. synthetic PASS ≠ real multi-as-of evidence PASS
 
-**選定理由:**
-blocking は cross-time 判別規則の実装検証。まず synthetic-first で Fail-Closed を固定する。
+**B 選定理由:** synthetic Fail-Closed は固定済み。次の blocking は実 provider 複数 as-of での候補再現可否。
 
 ---
 
@@ -357,6 +355,7 @@ blocking は cross-time 判別規則の実装検証。まず synthetic-first で
 - [`data-contract.md`](data-contract.md)
 - [`security-master-acceptance-criteria.md`](security-master-acceptance-criteria.md)
 - [`security-master-feasibility-poc.md`](security-master-feasibility-poc.md)
+- [`security-identity-continuity-evidence-poc.md`](security-identity-continuity-evidence-poc.md)
 - [`venue-listing-identity-gate-review.md`](venue-listing-identity-gate-review.md)
 - [`trading-currency-temporal-applicability-gate.md`](trading-currency-temporal-applicability-gate.md)
 - [`openfigi-forward-archive-poc.md`](openfigi-forward-archive-poc.md)
