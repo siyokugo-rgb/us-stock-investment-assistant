@@ -128,3 +128,14 @@ tasks.register<JavaExec>("massiveAllTickersForwardArchivePoc") {
     mainClass.set("archive.poc.massive.MassiveAllTickersLiveArchivePocKt")
     isIgnoreExitValue = true
 }
+
+// Live Security identity continuity multi-as-of Overview validation. Requires MASSIVE_API_KEY else LIVE_UNVERIFIED.
+tasks.register<JavaExec>("massiveSecurityIdentityContinuityLivePoc") {
+    group = "verification"
+    description =
+        "Run live Massive Ticker Overview dated T1/T2 continuity evidence validation " +
+            "(Fail-Closed; no SecurityId/SecurityIdentifier/knownAt/DailyPrice; no mock)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("archive.poc.binding.MassiveSecurityIdentityContinuityLivePocKt")
+    isIgnoreExitValue = true
+}

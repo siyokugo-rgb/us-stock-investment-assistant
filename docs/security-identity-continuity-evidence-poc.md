@@ -5,7 +5,7 @@
 **Baseline `origin/main` tree:** `25d243447b27cf0e6439e54ce45f758bf5163b57`  
 **Gate SoT:** [`security-identity-ticker-reuse-gate.md`](security-identity-ticker-reuse-gate.md)  
 **PR #40:** MERGED（Gate Review）  
-**Mode:** synthetic-first（**synthetic PASS ≠ real multi-as-of provider PASS**）
+**Mode:** synthetic PASS + real multi-as-of **LIVE_VERIFIED**（いずれも SecurityId / knownAt / validity / DailyPrice / Backtest の GO ではない）
 
 | Gate | Status |
 | --- | --- |
@@ -14,7 +14,7 @@
 | SecurityId issuance | **NO-GO** |
 | SecurityIdentifier / knownAt / validFrom / validTo | **NO-GO** |
 | DailyPrice.currency / MIC / Venue | **NO-GO** |
-| Real multi-as-of provider validation | **未実施** |
+| Real multi-as-of provider validation | **LIVE_VERIFIED**（AAPL/MSFT × T1/T2；下記） |
 | Real Backtest | **NO-GO** |
 
 ---
@@ -199,8 +199,64 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 
 | Claim | Status |
 | --- | --- |
-| Synthetic Fail-Closed / candidate rules | **PASS（本 PoC）** |
-| Real provider multi-as-of archive continuity | **未実施** |
+| Synthetic Fail-Closed / candidate rules | **PASS（PR #41）** |
+| Real provider multi-as-of archive continuity | **LIVE_VERIFIED**（下記 Latest live attempt；mock 禁止・追加 live request 不要） |
+
+### Live runner
+
+- Entry: `archive.poc.binding.MassiveSecurityIdentityContinuityLivePoc`
+- Gradle: `./gradlew --no-daemon -q massiveSecurityIdentityContinuityLivePoc`
+- Reuses: `MassiveTickerOverviewForwardArchiveService` + `SecurityIdentityContinuityEvidenceDeriver`（規則変更なし）
+- Tickers（無料枠最小）: `AAPL`, `MSFT`（`LIVE_VERIFIED` は identity-evaluable ≥2 のため 2 銘柄で足りる）
+- Provider as-of dates: `T1=2025-01-06`, `T2=2026-06-01`（無料枠履歴範囲想定；`date=` selector only；≠ knownAt / validFrom / validTo）
+- ARCHIVE_ROOT: `./archive-runtime`（gitignore；**Git 未保存**；fixture 化なし）
+- Max **4** HTTP requests（2×2）；自動 retry / 大量 request 禁止；429 → provider failure 記録
+
+### Latest live attempt
+
+| Field | Value |
+| --- | --- |
+| Run context | Free-tier live（AAPL/MSFT × provider as-of `2025-01-06` / `2026-06-01`；max 4 requests；1 回のみ） |
+| `MASSIVE_API_KEY` | **SET**（値は記録しない） |
+| Overall | **LIVE_VERIFIED** |
+| identityEvaluablePairs | **2** |
+| integrityFail | **false** |
+| 403 / 429 / provider failure | **なし** |
+| AAPL observationStatus | T1=`OBSERVED`（2025-01-06） / T2=`OBSERVED`（2026-06-01） |
+| AAPL share_class_figi | `BBG001S5N8V8` / `BBG001S5N8V8` |
+| AAPL composite_figi | `BBG000B9XRY4` / `BBG000B9XRY4` |
+| AAPL primary_exchange | `XNAS` / `XNAS` |
+| AAPL derivedStatus / reason | `CONTINUITY_CANDIDATE` / `null` |
+| AAPL evidenceEligibleAt | `2026-09-18T05:39:45.787697068Z`（今回 archive availability；≠ provider as-of） |
+| AAPL integrityFail | **false** |
+| MSFT observationStatus | T1=`OBSERVED`（2025-01-06） / T2=`OBSERVED`（2026-06-01） |
+| MSFT share_class_figi | `BBG001S5TD05` / `BBG001S5TD05` |
+| MSFT composite_figi | `BBG000BPH459` / `BBG000BPH459` |
+| MSFT primary_exchange | `XNAS` / `XNAS` |
+| MSFT derivedStatus / reason | `CONTINUITY_CANDIDATE` / `null` |
+| MSFT evidenceEligibleAt | `2026-09-18T05:39:45.865939451Z`（今回 archive availability；≠ provider as-of） |
+| MSFT integrityFail | **false** |
+| live raw / manifest | **Git 未収録**（`archive-runtime` gitignored） |
+| provider as-of ≠ knownAt | **維持**（T1/T2 は provider `date=` のみ；`evidenceEligibleAt` へ遡及しない） |
+| SecurityId / SecurityIdentifier / knownAt / validFrom / validTo / DailyPrice / MIC / Venue / Real Backtest | **NO-GO 維持** |
+| Paid API plan | **不要**（無料利用前提） |
+
+**`LIVE_VERIFIED` が証明すること（これだけ）:**  
+実 Massive の複数 provider as-of archive を既存 Fail-Closed deriver へ通し、identity continuity candidate を再現できた。
+
+**`LIVE_VERIFIED` が証明しないこと（GO にしない）:**  
+SecurityId issuance / SecurityIdentifier / knownAt / validFrom·validTo / identity validity interval / DailyPrice.currency / Real Backtest / MIC·Venue。  
+特に `T1=2025-01-06`・`T2=2026-06-01` は **provider as-of**；`evidenceEligibleAt`（2026-09-18）は **今回の archive availability**。provider as-of を knownAt へ遡及禁止。
+
+| Classification | Meaning |
+| --- | --- |
+| `LIVE_VERIFIED` | ≥2 **identity-evaluable** pairs（両 OBSERVED + 両 `share_class_figi` nonblank + deriver 完了 + status ≠ UNRESOLVED + integrity PASS）。provider 到達だけでは足りない |
+| `LIVE_PARTIAL` | provider 到達したが identity-evaluable pair が 0〜1、optional identity field 欠損等 |
+| `LIVE_UNVERIFIED` | key 無し / 有効検証不可 |
+| `LIVE_FAIL` | raw↔deriver 矛盾 / invariant 違反等 |
+
+`LIVE_VERIFIED` は CONTINUITY_CANDIDATE 固定ではない（raw に従い RECYCLE / CONFLICT / TICKER_CHANGE も identity-evaluable 可）。  
+`LIVE_PARTIAL` は失敗と同一視しないが、real multi-as-of Gate PASS にも昇格しない。
 
 ---
 
@@ -208,7 +264,7 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 
 | Item | Severity |
 | --- | --- |
-| Real multi-as-of Massive archives での continuity 再現未実施 | **Critical** |
+| Real multi-as-of Massive archives での continuity 再現 | **解消（LIVE_VERIFIED）** — 上記 Latest live attempt；SecurityId / validity / Backtest の GO ではない |
 | SecurityId 発行ポリシー不在（意図的） | **Critical**（NO-GO） |
 | SecurityIdentifier namespace/granularity 不足 → FIGI 安全格納不可 | **High** |
 | Ticker Events / change effective date / knownAt 未確立 | **High** |
@@ -222,12 +278,13 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 
 | Option | Select? |
 | --- | --- |
-| **A. Real multi-as-of Massive continuity evidence 検証（Overview dated snapshots）** | **YES（候補）** |
-| B. Ticker Event archive PoC | 後続 |
-| C. Massive↔OpenFIGI FIGI consistency PoC | A の後でも可 |
+| A. Re-run live Overview multi-as-of validation with MASSIVE_API_KEY set | **DONE**（`LIVE_VERIFIED`；追加 live request 不要） |
+| **B. Ticker Event archive PoC** | **YES（次工程候補）** |
+| C. Massive↔OpenFIGI FIGI consistency PoC | 後続 |
 | D. Cross-source Overview↔All Tickers continuity Gate | 別軸 |
+| E. SecurityId issuance 実装 | **禁止**（Critical NO-GO のまま） |
 
-選定理由: synthetic Fail-Closed は固定済み。blocking は実 provider 複数 as-of での候補再現可否。
+選定理由: live multi-as-of continuity 再現は完了。残 High のうち、provider as-of ≠ knownAt / change effective date を埋める前段として Ticker Event archive PoC を次候補とする。SecurityId 実装へ直接進まない。
 
 ---
 
@@ -246,4 +303,5 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 - Draft PR としてレビュー可
 - **Ready / merge はユーザー指示まで禁止**
 - 本文書は SecurityId 発行・SecurityIdentifier 行生成・DailyPrice・Real Backtest・ticker 文字列連続履歴の許可書ではない
-- Contract PASS ≠ Evidence PASS ≠ Continuity GO；synthetic PASS ≠ real multi-as-of PASS
+- Contract PASS ≠ Evidence PASS ≠ Continuity GO；**`LIVE_VERIFIED` ≠ SecurityId / knownAt / validity / DailyPrice / Backtest GO**
+- live raw / `archive-runtime` は Git に入れない；API key 値は文書・diff に載せない
