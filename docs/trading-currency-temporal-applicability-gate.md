@@ -1,21 +1,26 @@
 # Trading Currency Temporal Applicability Gate
 
-**Date (UTC):** 2026-09-18  
-**Repository:** `siyokugo-rgb/us-stock-investment-assistant`  
-**Review type:** Gate Review / domain-data audit only（実装なし）  
-**Baseline `origin/main` HEAD:** `93d44bbcf08c74ff478ef9cd89ef5dcd1de47787`  
-**Baseline `origin/main` tree:** `2694c67cde2d68e935491c27fb4d37cbce81746f`  
-**Prior MERGED:** PR #38（PR #35 final content clean reapply）  
+**Date (UTC):** 2026-09-18
+**Repository:** `siyokugo-rgb/us-stock-investment-assistant`
+**Review type:** Gate Review / domain-data audit only（実装なし）
+**Baseline `origin/main` HEAD:** `93d44bbcf08c74ff478ef9cd89ef5dcd1de47787`
+**Baseline `origin/main` tree:** `2694c67cde2d68e935491c27fb4d37cbce81746f`
+**Prior MERGED:** PR #38（PR #35 final content clean reapply）
 **Android Runtime Gate:** PASS（診断経路で `ANDROID CORE SMOKE: PASS`）
 
 | Gate | Verdict |
 | --- | --- |
 | Archive-level currency evidence | **PASS（維持）** — Layer B CANDIDATE 生成済み |
-| Forward applicability | **CONDITIONAL** — `evidenceEligibleAt` 以降の archive-level Forward のみ；bar 適用なし |
+| Forward applicability | **CONDITIONAL** — **evidence availability / use** only（下記 Notes）；state applicability ではない |
 | Historical / bar-level applicability | **NO-GO** |
 | DailyPrice.currency | **NO-GO** |
 | Real Backtest | **NO-GO** |
 | Security identity dependency | **BLOCKING** — ticker 文字列一致 ≠ Security 連続履歴 |
+
+**Forward applicability Notes（見出し維持・意味の固定）:**
+本表の Forward applicability は **Forward evidence availability / use** を指す。
+`evidenceEligibleAt` 以降に「その時点までに取得済みの archive evidence」を参照できる条件付き可否であり、
+currency state の継続有効・DailyPrice.currency・current-state certainty への昇格ではない（§A.4 / §B）。
 
 **SoT（本 Gate の読取対象）:**
 
@@ -36,7 +41,7 @@
 | --- | --- |
 | Archive-level evidence only | `TradingCurrencyEvidence` KDoc / PoC |
 | `temporalApplicability` = **UNRESOLVED only**（CANDIDATE でも固定） | model `init` + Deriver |
-| `evidenceEligibleAt = max(priceEligibilityBoundaryAt, allTickersEligibilityBoundaryAt)` | model invariant |
+| `evidenceEligibleAt = max(priceEligibilityBoundaryAt, allTickersEligibilityBoundaryAt)` | model invariant；**availability** 最早境界 ≠ state validity from |
 | `allTickersRequestDate` = provider as-of selector from requestKey；nullable | Deriver + `MassiveAllTickersRequestKey` |
 | `allTickersRequestDate ≠ knownAt` | PoC / Gate SoT |
 | `allTickersRequestDate ≠ evidenceEligibleAt` | PoC |
@@ -55,15 +60,28 @@
 | Axis | What it is | Current carrier | What it is **not** |
 | --- | --- | --- | --- |
 | 1. PRICE observation / bar time | Custom Bars window / trading date of OHLCV | PRICE requestKey / bar payload | currency validity；knownAt |
-| 2. All Tickers provider as-of date | Massive `date=` selector（その日に利用可能な ticker 状態） | `allTickersRequestDate` | knownAt；eligibility；bar date |
+| 2. All Tickers provider as-of date | Massive `date=` **as-of selector**（provider がその selector で返す状態） | `allTickersRequestDate` | knownAt；eligibility；bar date；response 取得日 |
 | 3. Archive attempt / fetch / ingest / eligibility | HTTP/archive lifecycle | `attemptedAt` / `fetchedAt` / `ingestedAt` / `eligibilityBoundaryAt` | provider as-of；bar time |
-| 4. Evidence usable time | Forward で evidence を使い始めてよい時刻 | `evidenceEligibleAt` | historical knownAt；listing from |
+| 4. Evidence availability boundary | その archive evidence を処理で参照可能になる最早境界 | `evidenceEligibleAt` | currency validity interval 開始；state 継続証明；knownAt；listing from |
 | 5. Historical knownAt / PIT availability | 「その時点でユーザーが知り得た」 | **未解決**（本 chain に無し） | ingest；request `date` |
 
+### A.4 `evidenceEligibleAt` 意味の固定
+
+| Statement | Verdict |
+| --- | --- |
+| `evidenceEligibleAt` = その archive evidence を処理で参照可能になる最早境界 | **YES** |
+| `evidenceEligibleAt` = currency validity interval の開始 | **NO** |
+| `evidenceEligibleAt` 以降でも、currency state が decision/bar 時点まで継続して有効と証明できる | **NO** |
+| `[evidenceEligibleAt, +∞)` を currency validity として生成してよい | **NO** |
+| Forward Research で参照可能なのは「その時点までに取得済みの archive evidence」 | **YES（availability）** |
+| 上記参照 = DailyPrice.currency / current-state certainty への昇格 | **NO** |
+
 ```text
-allTickersRequestDate     → provider as-of state selector
+allTickersRequestDate     → provider as-of selector（≠ fetch/response calendar day）
 eligibilityBoundaryAt     → archive OBSERVED usable boundary（All Tickers: ingestedAt）
-evidenceEligibleAt        → max(price, allTickers) eligibility（Forward usable）
+evidenceEligibleAt        → max(price, allTickers) eligibility
+                            = evidence availability earliest bound
+                            ≠ currency state validity from-time
 PRICE bar trading date    → observation economics only
 knownAt                   → NOT derived from any of the above in this chain
 ```
@@ -77,17 +95,21 @@ knownAt                   → NOT derived from any of the above in this chain
 | Claim | Allowed? |
 | --- | --- |
 | Layer B archive-level CANDIDATE（ISO PASS 等） | **YES**（既存） |
-| Forward Research が `evidenceEligibleAt` 以降に candidate を参照 | **CONDITIONAL YES** |
+| Forward Research が `evidenceEligibleAt` 以降に candidate **evidence を参照**（availability） | **CONDITIONAL YES** |
+| `evidenceEligibleAt` 以降、currency state が継続有効（state applicability） | **NO** |
 | 「現在の currency だから全過去 PRICE bars に適用」 | **NO** |
 | listing / trading currency の historical validity interval | **NO** |
 | knownAt / PIT | **NO** |
 
-### Forward-only 境界
+### Forward evidence availability 境界（state applicability ではない）
 
-date omitted の CANDIDATE を Forward で使う場合でも、適用開始は **高々 `evidenceEligibleAt`**。
+date omitted の CANDIDATE について:
 
+- **Evidence availability:** 処理が参照してよい最早境界は **高々 `evidenceEligibleAt`**
+- **State applicability:** currency が decision/bar 時点で有効であることの証明には **ならない**
+- `[evidenceEligibleAt, +∞)` の currency validity を生成してはいけない
 - それより前の bar / decision / backtest window への帰属 **禁止**
-- 「snapshot が現在を表す」≠「過去も同一」
+- 「snapshot が現在を表す」≠「過去も同一」≠「将来も同一」
 - omitted date の複数取得は **別 archive evidence**；自動マージして continuous history にしない（§D）
 
 ---
@@ -97,20 +119,31 @@ date omitted の CANDIDATE を Forward で使う場合でも、適用開始は *
 ### Example（固定）
 
 ```text
-All Tickers request date = 2024-06-01
-実際の fetch / ingest     = 2026-09-xx
+All Tickers request date = 2024-06-01   # provider as-of selector only
+実際の fetch / ingest     = 2026-09-xx  # when the HTTP response was obtained/archived
 ```
+
+**正しい読み:**
+「**2026-09 の fetch 時に**、provider の `date=2024-06-01` as-of selector で返された状態の archive evidence」。
+
+**誤読禁止（response time / knownAt への読み替え）:**
+
+| Forbidden claim | Verdict |
+| --- | --- |
+| 2024-06-01 当日にその API response を取得した | **NO** |
+| 2024-06-01 時点で同じ response が利用可能だった | **NO** |
+| 2024-06-01 時点でユーザー／strategy が知っていた | **NO** |
+| `knownAt = 2024-06-01` | **NO** |
 
 | Statement | Verdict |
 | --- | --- |
-| provider as-of state ≈ 「2024-06-01 に Massive がその ticker について返した状態」の archive evidence | **YES（条件付き）** |
-| 2024-06-01 時点でユーザー／戦略がその currency を知っていた（knownAt） | **NO** |
+| archive evidence = fetch 時点 response under `date=2024-06-01` selector | **YES（条件付き）** |
 | 2024 backtest / 過去 decision へ自動投入 | **NO** |
 | PRICE bars（任意時点）へ自動適用 | **NO** |
-| `evidenceEligibleAt`（≈ ingest 側）以前の Forward 利用 | **NO** |
+| `evidenceEligibleAt`（≈ ingest 側）以前の evidence availability 利用 | **NO** |
 
-**PIT 固定規則:**  
-`allTickersRequestDate`（historical）+ later ingest ⇒ **as-of raw/candidate 記録可**；**historical knownAt 主張不可**；**過去 backtest 自動投入不可**。
+**PIT 固定規則:**
+`allTickersRequestDate`（historical selector）+ later ingest ⇒ **as-of selector 付き raw/candidate 記録可**；**historical knownAt 主張不可**；**過去 backtest 自動投入不可**；**selector 日付を response 取得日と同一視しない**。
 
 ---
 
@@ -123,7 +156,7 @@ Pair-wise Deriver は単一 PRICE × 単一 All Tickers。複数 All Tickers / �
 | same compatible as-of + USD / USD | corroboration | 重複 evidence；矛盾なし（identity は別問題） |
 | same compatible as-of + USD / CAD | **CONFLICT 候補** | `CURRENCY_CONFLICT`；**latest-wins 禁止**；自動採用禁止 |
 | different as-of + USD → CAD | **temporal state difference** | 単純上書き禁止；区間補間禁止；どちらも単独 CANDIDATE として保持可 |
-| date omitted の複数 snapshot | distinct Forward snapshots | 連続履歴に連結しない；各々 `evidenceEligibleAt` 境界のみ |
+| date omitted の複数 snapshot | distinct Forward snapshots | 連続履歴に連結しない；各々 availability 境界（`evidenceEligibleAt`）のみ |
 | historical snapshot を後日取得 | as-of evidence + late eligibility | §C；knownAt にしない |
 | snapshot 欠落区間 | coverage gap | 欠落区間を同一 currency と見なさない |
 
@@ -132,7 +165,7 @@ Pair-wise Deriver は単一 PRICE × 単一 All Tickers。複数 All Tickers / �
 - 両方 `allTickersRequestDate` が **同一非 null 日付**、または
 - 両方 **date omitted** かつ「同一 Forward 観測意図」と証明できない場合は **compatible とみなさない**（安全側: 別 snapshot）
 
-same-as-of USD/CAD は reserved `TradingCurrencyEvidenceStatus.CONFLICT` の第一用途。  
+same-as-of USD/CAD は reserved `TradingCurrencyEvidenceStatus.CONFLICT` の第一用途。
 different-as-of USD→CAD を CONFLICT に潰すことも latest-wins することも **禁止**。
 
 ---
@@ -143,15 +176,15 @@ different-as-of USD→CAD を CONFLICT に潰すことも latest-wins するこ�
 | --- | --- |
 | currency を listing validity interval へ展開できるか | **導出不可（現状）** |
 | 隣接 snapshot が同じ code ならその間ずっと同一と補間してよいか | **NO** |
-| date omitted CANDIDATE の `from = evidenceEligibleAt`, `to = +∞` を historical interval としてよいか | **NO**（Forward 参照境界には使えても historical validity ではない） |
+| date omitted CANDIDATE の `from = evidenceEligibleAt`, `to = +∞` を currency validity としてよいか | **NO**（evidence availability 境界 ≠ state validity；historical でも Forward でも生成禁止） |
 | date supplied の `from = requestDate` を historical from にしてよいか | **NO**（provider as-of ≠ knownAt / listing from；欠落・遅延取得あり） |
 
 **導出に必要なもの（不足）:**
 
-1. Security identity 連続性（§F）  
-2. 意図した as-of 密度 / 欠落区間ポリシー  
-3. change detection と CONFLICT 処理  
-4. historical knownAt（PIT）が要るなら別 evidence  
+1. Security identity 連続性（§F）
+2. 意図した as-of 密度 / 欠落区間ポリシー
+3. change detection と CONFLICT 処理
+4. historical knownAt（PIT）が要るなら別 evidence
 
 根拠不足のまま interval を生成しない。
 
@@ -166,8 +199,8 @@ different-as-of USD→CAD を CONFLICT に潰すことも latest-wins するこ�
 | 異なる `allTickersRequestDate` の同 ticker 行を同一 Security の時系列として連結 | **根拠不足 → 禁止** |
 | ticker recycle（別発行体が後に同文字列） | **未解決；Critical** |
 
-**Blocking dependency:**  
-Historical / bar-level / validity interval / Real Backtest を進める前に **Security identity / ticker-reuse Gate** が必要。  
+**Blocking dependency:**
+Historical / bar-level / validity interval / Real Backtest を進める前に **Security identity / ticker-reuse Gate** が必要。
 本 Temporal Gate だけでは identity を解決しない。
 
 ---
@@ -185,12 +218,12 @@ Historical / bar-level / validity interval / Real Backtest を進める前に **
 
 新状態ごとに必須:
 
-1. 意味（何を主張するか）  
-2. 入力条件（どの軸が揃っているか）  
-3. 禁止用途（DailyPrice / backtest / bar 帰属など）  
+1. 意味（何を主張するか）
+2. 入力条件（どの軸が揃っているか）
+3. 禁止用途（DailyPrice / backtest / bar 帰属など）
 4. Fail-Closed（欠落時の退行先）
 
-候補を安易に `RESOLVED` / `FORWARD_ONLY` 等へ増やしても、§E/§F が空なら実装価値がない。  
+候補を安易に `RESOLVED` / `FORWARD_ONLY` 等へ増やしても、§E/§F が空なら実装価値がない。
 **今回の結論: enum 拡張しない。UNRESOLVED のまま。**
 
 ---
@@ -216,8 +249,9 @@ CONDITIONAL にもしない。根拠不足なら NO-GO を維持する方針に�
 | I4 | ticker reuse（同文字列・別 identity） | 別人の currency を混線 | identity Gate まで **連続履歴禁止** |
 | I5 | missing snapshots 区間を同一 currency で埋める | 無根拠補間 | **禁止**（§E） |
 | I6 | same-as-of USD vs CAD | どちらを採用しても偽の確定 | **CONFLICT**；採用禁止 |
-| I7 | `evidenceEligibleAt` 前の Forward 利用 | ingest 前に使えたことにする | **禁止** |
-| I8 | `allTickersRequestDate` を knownAt に転用 | as-of selector を PIT に偽装 | **禁止** |
+| I7 | `evidenceEligibleAt` 前の evidence 参照 | ingest 前に使えたことにする | **禁止** |
+| I8 | `allTickersRequestDate` を knownAt / response 取得日に転用 | as-of selector を PIT または fetch day に偽装 | **禁止** |
+| I9 | date omitted snapshot を `evidenceEligibleAt` 以後に参照 | availability と state 継続を混同 | evidence availability **可**；currency state 継続期間 **UNRESOLVED**；future date までの validity extrapolation **禁止** |
 
 ---
 
@@ -226,7 +260,7 @@ CONDITIONAL にもしない。根拠不足なら NO-GO を維持する方針に�
 | Gate | Verdict | Notes |
 | --- | --- | --- |
 | Archive-level currency evidence | **PASS** | Layer B CANDIDATE（PRICE + All Tickers）維持 |
-| Forward applicability | **CONDITIONAL** | `evidenceEligibleAt` 以降の archive-level 参照のみ；bar なし |
+| Forward applicability | **CONDITIONAL** | = **Forward evidence availability / use**：`evidenceEligibleAt` 以降に取得済み archive evidence を参照可。currency state 継続・`[evidenceEligibleAt,+∞)` validity・DailyPrice 昇格は含まない |
 | Historical / bar-level applicability | **NO-GO** | date / interval / identity 不足 |
 | DailyPrice.currency | **NO-GO** | 独立判定；本 Gate で開けない |
 | Real Backtest | **NO-GO** | PIT + bar-level + identity 全不足 |
@@ -259,9 +293,9 @@ CONDITIONAL にもしない。根拠不足なら NO-GO を維持する方針に�
 | D. DailyPrice.currency 実装 | **NO** |
 | E. validity interval 実装 | **NO**（導出不可） |
 
-**選定理由:**  
-Temporal applicability を UNRESOLVED より先へ進めるには、異なる as-of の同 ticker evidence を同一 Security の連続履歴として扱えるかが **blocking**。  
-interval / bar-level / Real Backtest / DailyPrice.currency は identity なしでは開けない。  
+**選定理由:**
+Temporal applicability を UNRESOLVED より先へ進めるには、異なる as-of の同 ticker evidence を同一 Security の連続履歴として扱えるかが **blocking**。
+interval / bar-level / Real Backtest / DailyPrice.currency は identity なしでは開けない。
 次は実装ではなく **Security identity / ticker-reuse Gate Review** のみ。
 
 ---
@@ -280,7 +314,7 @@ interval / bar-level / Real Backtest / DailyPrice.currency は identity なし�
 
 ## Merge advice
 
-- Draft PR としてレビュー可  
-- **main 自動 merge しない**  
-- 本文書は DailyPrice.currency / SecurityId / Real Backtest / bar-level / latest-wins / RESOLVED 化の許可書ではない  
-- Archive-level PASS ≠ Forward 無条件 GO ≠ Historical GO  
+- Draft PR としてレビュー可
+- **main 自動 merge しない**
+- 本文書は DailyPrice.currency / SecurityId / Real Backtest / bar-level / latest-wins / RESOLVED 化の許可書ではない
+- Archive-level PASS ≠ Forward evidence availability GO ≠ currency state applicability GO ≠ Historical GO
