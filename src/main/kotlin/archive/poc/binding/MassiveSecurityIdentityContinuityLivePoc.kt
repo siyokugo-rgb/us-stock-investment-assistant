@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter
  * - MASSIVE_API_KEY (required for live; absent → LIVE_UNVERIFIED, exit 0; no mock)
  * - ARCHIVE_ROOT (optional; default ./archive-runtime; gitignored)
  *
+ * Free-tier live defaults: AAPL/MSFT × date=2025-01-06 / 2026-06-01 (4 requests).
  * Never invents knownAt / SecurityId / SecurityIdentifier / validFrom/validTo / DailyPrice.
  * Provider `date=` is as-of selector only — ≠ knownAt / identity validity.
  * Does not print API key or raw body bytes.
@@ -74,9 +75,10 @@ fun main() {
  * Pure classification / orchestration helpers for live continuity validation (testable).
  */
 object MassiveSecurityIdentityContinuityLivePoc {
-    val DEFAULT_TICKERS = listOf("AAPL", "MSFT", "GOOGL")
-    const val DEFAULT_T1 = "2021-01-04"
-    const val DEFAULT_T2 = "2024-06-03"
+    /** Free-tier live scope: 2 tickers × 2 dates = 4 requests (LIVE_VERIFIED needs ≥2 pairs). */
+    val DEFAULT_TICKERS = listOf("AAPL", "MSFT")
+    const val DEFAULT_T1 = "2025-01-06"
+    const val DEFAULT_T2 = "2026-06-01"
 
     enum class LiveClassification {
         LIVE_VERIFIED,

@@ -22,12 +22,7 @@ class MassiveSecurityIdentityContinuityLivePocTest {
 
     @Test
     fun twoUsableObservedPairsIsLiveVerified() {
-        val outcomes =
-            listOf(
-                usable("AAPL"),
-                usable("MSFT"),
-                notObserved("GOOGL"),
-            )
+        val outcomes = listOf(usable("AAPL"), usable("MSFT"))
         assertEquals(
             MassiveSecurityIdentityContinuityLivePoc.LiveClassification.LIVE_VERIFIED,
             MassiveSecurityIdentityContinuityLivePoc.classifyOverall(outcomes),
@@ -36,7 +31,7 @@ class MassiveSecurityIdentityContinuityLivePocTest {
 
     @Test
     fun singleUsablePairIsLivePartial() {
-        val outcomes = listOf(usable("AAPL"), notObserved("MSFT"), notObserved("GOOGL"))
+        val outcomes = listOf(usable("AAPL"), notObserved("MSFT"))
         assertEquals(
             MassiveSecurityIdentityContinuityLivePoc.LiveClassification.LIVE_PARTIAL,
             MassiveSecurityIdentityContinuityLivePoc.classifyOverall(outcomes),
@@ -59,11 +54,17 @@ class MassiveSecurityIdentityContinuityLivePocTest {
 
     @Test
     fun defaultDatesAreOrderedAndTickersAreNonEmpty() {
+        assertEquals(
+            listOf("AAPL", "MSFT"),
+            MassiveSecurityIdentityContinuityLivePoc.DEFAULT_TICKERS,
+        )
+        assertEquals("2025-01-06", MassiveSecurityIdentityContinuityLivePoc.DEFAULT_T1)
+        assertEquals("2026-06-01", MassiveSecurityIdentityContinuityLivePoc.DEFAULT_T2)
         assertTrue(
             MassiveSecurityIdentityContinuityLivePoc.DEFAULT_T1 <
                 MassiveSecurityIdentityContinuityLivePoc.DEFAULT_T2,
         )
-        assertEquals(3, MassiveSecurityIdentityContinuityLivePoc.DEFAULT_TICKERS.size)
+        assertEquals(2, MassiveSecurityIdentityContinuityLivePoc.DEFAULT_TICKERS.size)
         assertFalse(MassiveSecurityIdentityContinuityLivePoc.DEFAULT_TICKERS.any { it.isBlank() })
     }
 
@@ -137,7 +138,6 @@ class MassiveSecurityIdentityContinuityLivePocTest {
                     integrityFailNotes = "unexplained UNRESOLVED",
                 ),
                 usable("MSFT"),
-                usable("GOOGL"),
             )
         assertEquals(
             MassiveSecurityIdentityContinuityLivePoc.LiveClassification.LIVE_FAIL,
@@ -156,7 +156,7 @@ class MassiveSecurityIdentityContinuityLivePocTest {
                     date = MassiveSecurityIdentityContinuityLivePoc.DEFAULT_T1,
                     archiveId = "$ticker-t1",
                     observationStatus = ObservationStatus.OBSERVED,
-                    requestKey = "GET|/v3/reference/tickers/$ticker|date=2021-01-04",
+                    requestKey = "GET|/v3/reference/tickers/$ticker|date=2025-01-06",
                     rawPayloadHash = "a".repeat(64),
                     eligibilityBoundaryAt = Instant.parse("2026-09-18T04:00:00Z"),
                     notes = null,
@@ -167,7 +167,7 @@ class MassiveSecurityIdentityContinuityLivePocTest {
                     date = MassiveSecurityIdentityContinuityLivePoc.DEFAULT_T2,
                     archiveId = "$ticker-t2",
                     observationStatus = ObservationStatus.OBSERVED,
-                    requestKey = "GET|/v3/reference/tickers/$ticker|date=2024-06-03",
+                    requestKey = "GET|/v3/reference/tickers/$ticker|date=2026-06-01",
                     rawPayloadHash = "b".repeat(64),
                     eligibilityBoundaryAt = Instant.parse("2026-09-18T04:01:00Z"),
                     notes = null,

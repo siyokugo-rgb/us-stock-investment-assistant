@@ -207,23 +207,24 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 - Entry: `archive.poc.binding.MassiveSecurityIdentityContinuityLivePoc`
 - Gradle: `./gradlew --no-daemon -q massiveSecurityIdentityContinuityLivePoc`
 - Reuses: `MassiveTickerOverviewForwardArchiveService` + `SecurityIdentityContinuityEvidenceDeriver`（規則変更なし）
-- Tickers（第一候補）: `AAPL`, `MSFT`, `GOOGL`
-- Provider as-of dates: `T1=2021-01-04`, `T2=2024-06-03`（`date=` selector only；≠ knownAt）
+- Tickers（無料枠最小）: `AAPL`, `MSFT`（`LIVE_VERIFIED` は identity-evaluable ≥2 のため 2 銘柄で足りる）
+- Provider as-of dates: `T1=2025-01-06`, `T2=2026-06-01`（無料枠履歴範囲想定；`date=` selector only；≠ knownAt / validFrom / validTo）
 - ARCHIVE_ROOT: `./archive-runtime`（gitignore；**Git 未保存**；fixture 化なし）
-- Max ~6 HTTP requests；429 → provider failure 記録（無限 retry 禁止）
+- Max **4** HTTP requests（2×2）；自動 retry / 大量 request 禁止；429 → provider failure 記録
 
 ### Latest live attempt
 
 | Field | Value |
 | --- | --- |
-| Run context | Cloud agent after PR #41 merge（main `bd1b048…`） |
+| Run context | Free-tier scope update（AAPL/MSFT × 2025-01-06 / 2026-06-01；max 4 requests） |
 | `MASSIVE_API_KEY` | **NOT SET** |
-| Overall | **LIVE_UNVERIFIED** |
+| Overall | **LIVE_UNVERIFIED**（live 実行未実施） |
 | Per-ticker OBSERVED | n/a（provider 未到達） |
 | share_class_figi / derived status | n/a |
 | evidenceEligibleAt | n/a |
 | provider as-of ≠ knownAt | **維持** |
 | SecurityId / SecurityIdentifier / knownAt / validFrom / validTo / DailyPrice | **NO-GO 維持** |
+| Paid API plan | **不要**（無料利用前提） |
 
 `LIVE_UNVERIFIED` ≠ deriver regression。key 設定後に同一 task を再実行し、`LIVE_VERIFIED` / `LIVE_PARTIAL` / `LIVE_FAIL` を判定する。
 
