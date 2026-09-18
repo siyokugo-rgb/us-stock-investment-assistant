@@ -199,8 +199,42 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 
 | Claim | Status |
 | --- | --- |
-| Synthetic Fail-Closed / candidate rules | **PASS（本 PoC）** |
-| Real provider multi-as-of archive continuity | **未実施** |
+| Synthetic Fail-Closed / candidate rules | **PASS（PR #41）** |
+| Real provider multi-as-of archive continuity | **LIVE_UNVERIFIED（本 runner）** — `MASSIVE_API_KEY` absent in this environment; mock fallback 禁止 |
+
+### Live runner
+
+- Entry: `archive.poc.binding.MassiveSecurityIdentityContinuityLivePoc`
+- Gradle: `./gradlew --no-daemon -q massiveSecurityIdentityContinuityLivePoc`
+- Reuses: `MassiveTickerOverviewForwardArchiveService` + `SecurityIdentityContinuityEvidenceDeriver`（規則変更なし）
+- Tickers（第一候補）: `AAPL`, `MSFT`, `GOOGL`
+- Provider as-of dates: `T1=2021-01-04`, `T2=2024-06-03`（`date=` selector only；≠ knownAt）
+- ARCHIVE_ROOT: `./archive-runtime`（gitignore；**Git 未保存**；fixture 化なし）
+- Max ~6 HTTP requests；429 → provider failure 記録（無限 retry 禁止）
+
+### Latest live attempt
+
+| Field | Value |
+| --- | --- |
+| Run context | Cloud agent after PR #41 merge（main `bd1b048…`） |
+| `MASSIVE_API_KEY` | **NOT SET** |
+| Overall | **LIVE_UNVERIFIED** |
+| Per-ticker OBSERVED | n/a（provider 未到達） |
+| share_class_figi / derived status | n/a |
+| evidenceEligibleAt | n/a |
+| provider as-of ≠ knownAt | **維持** |
+| SecurityId / SecurityIdentifier / knownAt / validFrom / validTo / DailyPrice | **NO-GO 維持** |
+
+`LIVE_UNVERIFIED` ≠ deriver regression。key 設定後に同一 task を再実行し、`LIVE_VERIFIED` / `LIVE_PARTIAL` / `LIVE_FAIL` を判定する。
+
+| Classification | Meaning |
+| --- | --- |
+| `LIVE_VERIFIED` | ≥2 ticker で T1/T2 両 OBSERVED + integrity PASS |
+| `LIVE_PARTIAL` | provider 到達したが usable pair 不足等 |
+| `LIVE_UNVERIFIED` | key 無し / 有効検証不可 |
+| `LIVE_FAIL` | raw↔deriver 矛盾 / invariant 違反等 |
+
+`LIVE_PARTIAL` は失敗と同一視しないが、real multi-as-of Gate PASS にも昇格しない。
 
 ---
 
@@ -208,7 +242,7 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 
 | Item | Severity |
 | --- | --- |
-| Real multi-as-of Massive archives での continuity 再現未実施 | **Critical** |
+| Real multi-as-of Massive archives での continuity 再現未実施 | **Critical**（runner 追加済；本環境は LIVE_UNVERIFIED） |
 | SecurityId 発行ポリシー不在（意図的） | **Critical**（NO-GO） |
 | SecurityIdentifier namespace/granularity 不足 → FIGI 安全格納不可 | **High** |
 | Ticker Events / change effective date / knownAt 未確立 | **High** |
@@ -222,12 +256,12 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 
 | Option | Select? |
 | --- | --- |
-| **A. Real multi-as-of Massive continuity evidence 検証（Overview dated snapshots）** | **YES（候補）** |
+| **A. Re-run live Overview multi-as-of validation with MASSIVE_API_KEY set** | **YES** |
 | B. Ticker Event archive PoC | 後続 |
 | C. Massive↔OpenFIGI FIGI consistency PoC | A の後でも可 |
 | D. Cross-source Overview↔All Tickers continuity Gate | 別軸 |
 
-選定理由: synthetic Fail-Closed は固定済み。blocking は実 provider 複数 as-of での候補再現可否。
+選定理由: runner / classification は固定済み。blocking は実 provider への到達と OBSERVED pair の再現。
 
 ---
 
