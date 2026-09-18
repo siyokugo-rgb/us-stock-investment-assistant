@@ -96,6 +96,9 @@ class MassiveTickerEventsLiveArchivePocTest {
 
     @Test
     fun providerFailureIsLiveProviderFailure() {
+        val body = """{"status":"ERROR"}""".toByteArray(StandardCharsets.UTF_8)
+        val raw = tmpDir.resolve("raw-403.raw")
+        Files.write(raw, body)
         val result =
             MassiveTickerEventsArchiveResult(
                 record =
@@ -106,7 +109,10 @@ class MassiveTickerEventsLiveArchivePocTest {
                         requestKey = MassiveTickerEventsArchiveClient.requestKey("XYZ"),
                         attemptedAt = Instant.parse("2026-09-18T12:00:00Z"),
                         attemptFinishedAt = Instant.parse("2026-09-18T12:00:01Z"),
+                        fetchedAt = Instant.parse("2026-09-18T12:00:01Z"),
                         ingestedAt = Instant.parse("2026-09-18T12:00:02Z"),
+                        rawPayloadHash = Sha256Hex.of(body),
+                        rawPayloadUri = raw.toString(),
                         httpStatus = 403,
                         transportStatus = TransportStatus.HTTP_RESPONSE,
                         observationStatus = ObservationStatus.PROVIDER_FAILURE,
