@@ -101,6 +101,85 @@ class MassiveTickerEventsForwardArchivePocTest {
             Instant.parse("2026-09-18T12:01:08Z"),
             Instant.parse("2026-09-18T12:01:09Z"),
             Instant.parse("2026-09-18T12:01:10Z"),
+            Instant.parse("2026-09-18T12:01:11Z"),
+            Instant.parse("2026-09-18T12:01:12Z"),
+            Instant.parse("2026-09-18T12:01:13Z"),
+            Instant.parse("2026-09-18T12:01:14Z"),
+            Instant.parse("2026-09-18T12:01:15Z"),
+            Instant.parse("2026-09-18T12:01:16Z"),
+            Instant.parse("2026-09-18T12:01:17Z"),
+            Instant.parse("2026-09-18T12:01:18Z"),
+            Instant.parse("2026-09-18T12:01:19Z"),
+            Instant.parse("2026-09-18T12:01:20Z"),
+            Instant.parse("2026-09-18T12:01:21Z"),
+            Instant.parse("2026-09-18T12:01:22Z"),
+            Instant.parse("2026-09-18T12:01:23Z"),
+            Instant.parse("2026-09-18T12:01:24Z"),
+            Instant.parse("2026-09-18T12:01:25Z"),
+            Instant.parse("2026-09-18T12:01:26Z"),
+            Instant.parse("2026-09-18T12:01:27Z"),
+            Instant.parse("2026-09-18T12:01:28Z"),
+            Instant.parse("2026-09-18T12:01:29Z"),
+            Instant.parse("2026-09-18T12:01:30Z"),
+            Instant.parse("2026-09-18T12:01:31Z"),
+            Instant.parse("2026-09-18T12:01:32Z"),
+            Instant.parse("2026-09-18T12:01:33Z"),
+            Instant.parse("2026-09-18T12:01:34Z"),
+            Instant.parse("2026-09-18T12:01:35Z"),
+            Instant.parse("2026-09-18T12:01:36Z"),
+            Instant.parse("2026-09-18T12:01:37Z"),
+            Instant.parse("2026-09-18T12:01:38Z"),
+            Instant.parse("2026-09-18T12:01:39Z"),
+            Instant.parse("2026-09-18T12:01:40Z"),
+            Instant.parse("2026-09-18T12:01:41Z"),
+            Instant.parse("2026-09-18T12:01:42Z"),
+            Instant.parse("2026-09-18T12:01:43Z"),
+            Instant.parse("2026-09-18T12:01:44Z"),
+            Instant.parse("2026-09-18T12:01:45Z"),
+            Instant.parse("2026-09-18T12:01:46Z"),
+            Instant.parse("2026-09-18T12:01:47Z"),
+            Instant.parse("2026-09-18T12:01:48Z"),
+            Instant.parse("2026-09-18T12:01:49Z"),
+            Instant.parse("2026-09-18T12:01:50Z"),
+            Instant.parse("2026-09-18T12:01:51Z"),
+            Instant.parse("2026-09-18T12:01:52Z"),
+            Instant.parse("2026-09-18T12:01:53Z"),
+            Instant.parse("2026-09-18T12:01:54Z"),
+            Instant.parse("2026-09-18T12:01:55Z"),
+            Instant.parse("2026-09-18T12:01:56Z"),
+            Instant.parse("2026-09-18T12:01:57Z"),
+            Instant.parse("2026-09-18T12:01:58Z"),
+            Instant.parse("2026-09-18T12:01:59Z"),
+            Instant.parse("2026-09-18T12:02:00Z"),
+            Instant.parse("2026-09-18T12:02:01Z"),
+            Instant.parse("2026-09-18T12:02:02Z"),
+            Instant.parse("2026-09-18T12:02:03Z"),
+            Instant.parse("2026-09-18T12:02:04Z"),
+            Instant.parse("2026-09-18T12:02:05Z"),
+            Instant.parse("2026-09-18T12:02:06Z"),
+            Instant.parse("2026-09-18T12:02:07Z"),
+            Instant.parse("2026-09-18T12:02:08Z"),
+            Instant.parse("2026-09-18T12:02:09Z"),
+            Instant.parse("2026-09-18T12:02:10Z"),
+            Instant.parse("2026-09-18T12:02:11Z"),
+            Instant.parse("2026-09-18T12:02:12Z"),
+            Instant.parse("2026-09-18T12:02:13Z"),
+            Instant.parse("2026-09-18T12:02:14Z"),
+            Instant.parse("2026-09-18T12:02:15Z"),
+            Instant.parse("2026-09-18T12:02:16Z"),
+            Instant.parse("2026-09-18T12:02:17Z"),
+            Instant.parse("2026-09-18T12:02:18Z"),
+            Instant.parse("2026-09-18T12:02:19Z"),
+            Instant.parse("2026-09-18T12:02:20Z"),
+            Instant.parse("2026-09-18T12:02:21Z"),
+            Instant.parse("2026-09-18T12:02:22Z"),
+            Instant.parse("2026-09-18T12:02:23Z"),
+            Instant.parse("2026-09-18T12:02:24Z"),
+            Instant.parse("2026-09-18T12:02:25Z"),
+            Instant.parse("2026-09-18T12:02:26Z"),
+            Instant.parse("2026-09-18T12:02:27Z"),
+            Instant.parse("2026-09-18T12:02:28Z"),
+            Instant.parse("2026-09-18T12:02:29Z"),
         )
     private var clockIdx = 0
 
@@ -331,6 +410,26 @@ class MassiveTickerEventsForwardArchivePocTest {
     }
 
     @Test
+    fun eventTypeWrongTypeIsRejected() {
+        val body =
+            """
+            {
+              "status":"OK",
+              "results":{
+                "events":[
+                  {"type":123,"date":"2022-06-09","ticker_change":{"ticker":"META"}}
+                ]
+              }
+            }
+            """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+        val result = archive(body = body)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertTrue(result.record.notes!!.contains("type"))
+        assertNull(result.record.eligibilityBoundaryAt)
+        assertNotNull(result.record.rawPayloadUri)
+    }
+
+    @Test
     fun eventTypeNotTickerChangeIsRejected() {
         val body =
             mutateValid {
@@ -350,6 +449,25 @@ class MassiveTickerEventsForwardArchivePocTest {
         val result = archive(body = body)
         assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
         assertTrue(result.record.notes!!.contains("date"))
+    }
+
+    @Test
+    fun eventDateWrongTypeIsRejected() {
+        val body =
+            """
+            {
+              "status":"OK",
+              "results":{
+                "events":[
+                  {"type":"ticker_change","date":20260601,"ticker_change":{"ticker":"META"}}
+                ]
+              }
+            }
+            """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+        val result = archive(body = body)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertTrue(result.record.notes!!.contains("date"))
+        assertNull(result.record.eligibilityBoundaryAt)
     }
 
     @Test
@@ -375,6 +493,63 @@ class MassiveTickerEventsForwardArchivePocTest {
         val result = archive(body = body)
         assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
         assertTrue(result.record.notes!!.contains("ticker_change"))
+    }
+
+    @Test
+    fun tickerChangeWrongTypeIsRejected() {
+        val body =
+            """
+            {
+              "status":"OK",
+              "results":{
+                "events":[
+                  {"type":"ticker_change","date":"2022-06-09","ticker_change":"META"}
+                ]
+              }
+            }
+            """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+        val result = archive(body = body)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertTrue(result.record.notes!!.contains("ticker_change must be object"))
+        assertNull(result.record.eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun tickerChangeTickerMissingIsRejected() {
+        val body =
+            """
+            {
+              "status":"OK",
+              "results":{
+                "events":[
+                  {"type":"ticker_change","date":"2022-06-09","ticker_change":{}}
+                ]
+              }
+            }
+            """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+        val result = archive(body = body)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertTrue(result.record.notes!!.contains("ticker_change.ticker"))
+        assertNull(result.record.eligibilityBoundaryAt)
+    }
+
+    @Test
+    fun tickerChangeTickerWrongTypeIsRejected() {
+        val body =
+            """
+            {
+              "status":"OK",
+              "results":{
+                "events":[
+                  {"type":"ticker_change","date":"2022-06-09","ticker_change":{"ticker":123}}
+                ]
+              }
+            }
+            """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+        val result = archive(body = body)
+        assertEquals(ObservationStatus.REJECTED_VALIDATION, result.record.observationStatus)
+        assertTrue(result.record.notes!!.contains("ticker_change.ticker"))
+        assertNull(result.record.eligibilityBoundaryAt)
     }
 
     @Test
@@ -669,6 +844,20 @@ class MassiveTickerEventsForwardArchivePocTest {
                 "POST|/vX/reference/tickers/META/events|types=ticker_change",
             )
         }
+    }
+
+    @Test
+    fun opaqueLookupIdContainingApiKeySubstringParsesCanonically() {
+        // Opaque provider lookup id may contain "APIKEY" as substring — not a secret query segment.
+        val id = "APIKEY123"
+        val key = MassiveTickerEventsArchiveClient.requestKey(id)
+        assertEquals(
+            "GET|/vX/reference/tickers/APIKEY123/events|types=ticker_change",
+            key,
+        )
+        assertFalse(key.contains("|apiKey=", ignoreCase = true))
+        val parsed = MassiveTickerEventsRequestKey.parseOrThrow(key)
+        assertEquals(id, parsed.lookupId)
     }
 
     @Test

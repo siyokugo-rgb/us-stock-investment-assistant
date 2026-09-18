@@ -6,7 +6,9 @@ package archive.poc.massive
  * Canonical form only:
  * `GET|/vX/reference/tickers/{LOOKUP_ID}/events|types=ticker_change`
  *
- * Fail-Closed on any deviation. API key must never appear.
+ * Fail-Closed on any deviation.
+ * Extra segments (including `|apiKey=…`) are rejected by exact 3-segment + canonical rebuild.
+ * Opaque lookupId may contain the substring "apiKey" / "APIKEY" without being treated as a secret segment.
  */
 object MassiveTickerEventsRequestKey {
     data class Parsed(
@@ -41,9 +43,6 @@ object MassiveTickerEventsRequestKey {
         require(parts[2] == "types=${MassiveTickerEventsArchiveClient.TYPES_TICKER_CHANGE}") {
             "malformed Massive ticker-events requestKey: expected " +
                 "types=${MassiveTickerEventsArchiveClient.TYPES_TICKER_CHANGE}"
-        }
-        require(!requestKey.contains("apiKey", ignoreCase = true)) {
-            "malformed Massive ticker-events requestKey: apiKey segment forbidden"
         }
 
         val canonical = MassiveTickerEventsArchiveClient.requestKey(lookupId)
