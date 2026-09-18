@@ -267,7 +267,7 @@ SecurityId issuance / SecurityIdentifier / knownAt / validFrom·validTo / identi
 | Real multi-as-of Massive archives での continuity 再現 | **解消（LIVE_VERIFIED）** — 上記 Latest live attempt；SecurityId / validity / Backtest の GO ではない |
 | SecurityId 発行ポリシー不在（意図的） | **Critical**（NO-GO） |
 | SecurityIdentifier namespace/granularity 不足 → FIGI 安全格納不可 | **High** |
-| Ticker Events / change effective date / knownAt 未確立 | **High** |
+| Ticker Events / change effective date / knownAt 未確立 | **High**（Semantics Gate + offline archive 済み；live probe 未） |
 | Massive↔OpenFIGI FIGI 粒度整合の実装層なし | **High** |
 | Cross-source Overview↔All Tickers continuity | **High**（別 Gate） |
 | DailyPrice.currency / Real Backtest | **Critical**（NO-GO 維持） |
@@ -280,12 +280,13 @@ SecurityId issuance / SecurityIdentifier / knownAt / validFrom·validTo / identi
 | --- | --- |
 | A. Re-run live Overview multi-as-of validation with MASSIVE_API_KEY set | **DONE**（`LIVE_VERIFIED`；追加 live request 不要） |
 | B. Massive Ticker Events Semantics Gate Review | **DONE（PR #43）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
-| **C. Ticker Events forward archive PoC** | **YES（次工程）** |
-| D. Massive↔OpenFIGI FIGI consistency PoC | 後続 |
-| E. Cross-source Overview↔All Tickers continuity Gate | 別軸 |
-| F. SecurityId issuance 実装 | **禁止**（Critical NO-GO のまま） |
+| C. Ticker Events forward archive PoC | **DONE** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
+| **D. Live Ticker Events schema probe / live archive validation** | **YES（次工程）** |
+| E. Massive↔OpenFIGI FIGI consistency PoC | 後続 |
+| F. Cross-source Overview↔All Tickers continuity Gate | 別軸 |
+| G. SecurityId issuance 実装 | **禁止**（Critical NO-GO のまま） |
 
-選定理由: Semantics Gate（PR #43）で公式意味境界は固定済み。次は Ticker Events forward archive PoC（raw + validator）。SecurityId 実装へ直接進まない。
+選定理由: Semantics Gate + offline forward archive 境界は完了。次は live schema probe。SecurityId 実装へ直接進まない。
 
 ---
 

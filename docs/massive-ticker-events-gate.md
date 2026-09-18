@@ -247,13 +247,13 @@ Ticker Event **単独**では:
 
 | Option | Select? |
 | --- | --- |
-| **A. Ticker Events forward archive PoC**（raw + Fail-Closed validator；SecurityId なし） | **YES** |
-| B. Ticker Events schema probe（live 最小観測のみ） | A に包含可；単独先行も可だが本選定では A |
+| A. Ticker Events forward archive PoC（raw + Fail-Closed validator；SecurityId なし） | **DONE** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
+| **B. Live Ticker Events schema probe / live archive validation** | **YES（次工程候補）** |
 | C. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
-| D. 別 Gate | 不要（本 semantics は本文書で固定） |
+| D. 別 Gate | 不要（semantics は本文書で固定） |
 | E. SecurityId / Ticker Events client の domain 直結実装 | **禁止** |
 
-**選定理由:** 公式 Attributes / sample で raw 境界を切れる一方、optionality・completeness・experimental 変化は **validator + exact-byte archive** なしに domain へ入れられない。次は possession 境界の forward archive PoC。schema probe は A の LIVE 経路で吸収。SecurityId 実装へは進まない。
+**選定理由:** Semantics Gate + offline forward archive 境界は完了。次は experimental live shape の少数 request による schema probe / archive validation。SecurityId 実装へは進まない。
 
 ---
 

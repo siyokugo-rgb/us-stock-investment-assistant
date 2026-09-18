@@ -322,7 +322,7 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | `SecurityIdentifier.knownAt` / validity を現行 archive から生成不可 | **Critical** |
 | Ticker recycle の確定手順が候補段階 | **Critical** |
 | 現行 `SecurityIdentifier` に namespace / granularity が無く venue/composite/share-class FIGI を安全格納できない | **High**（今回コード修正なし；mapping NO-GO 維持；source 埋め込み回避禁止） |
-| Ticker Events 未 archive・knownAt 未確立 | **High**（Semantics Gate: [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md)） |
+| Ticker Events live schema probe 未実施・knownAt 未確立 | **High**（offline archive: [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md)） |
 | Massive vs OpenFIGI FIGI 粒度整合 / conflict 規則の実装層なし | **High** |
 | Listing MIC ↔ price venue semantics | **High**（独立；本 Gate 非解決） |
 | SecurityId 発行ポリシー不在 | **High**（意図的 NO-GO） |
@@ -336,15 +336,18 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | A. Security identity continuity evidence 最小 PoC（synthetic-first） | **DONE** → [`security-identity-continuity-evidence-poc.md`](security-identity-continuity-evidence-poc.md) |
 | B. Real multi-as-of Massive continuity evidence 検証（Overview dated snapshots） | **DONE / LIVE_VERIFIED**（PR #42） |
 | C. Massive Ticker Events Semantics Gate Review | **DONE（PR #43）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
-| **D. Ticker Events forward archive PoC** | **YES（次工程）** |
-| E. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
-| F. SecurityId issuance 実装 | **禁止** |
+| D. Ticker Events forward archive PoC | **DONE** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
+| **E. Live Ticker Events schema probe / live archive validation** | **YES（次工程）** |
+| F. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
+| G. SecurityId issuance 実装 | **禁止** |
 
 **B（完了）:** 実 Massive 複数 provider as-of archive を既存 Fail-Closed deriver へ通し identity continuity candidate を再現（`LIVE_VERIFIED`）。SecurityId / knownAt / validity / DailyPrice / Backtest の GO ではない。
 
-**C（完了）:** 公式一次資料で Ticker Events semantics / 時間意味 / acceptance を固定。client / archive 未実装。
+**C（完了）:** 公式一次資料で Ticker Events semantics / 時間意味 / acceptance を固定。
 
-**D 選定理由:** Semantics Gate 済み。次は experimental raw の possession 境界（forward archive + Fail-Closed validator）。SecurityId 実装へ直接進まない。
+**D（完了）:** experimental Ticker Events の offline raw/validator/archive 境界。live 未実施。
+
+**E 選定理由:** offline 境界は固定済み。次は live schema probe。SecurityId 実装へ直接進まない。
 
 ---
 
