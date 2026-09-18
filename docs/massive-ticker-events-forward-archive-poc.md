@@ -3,6 +3,7 @@
 **Date (UTC):** 2026-09-18
 **Baseline `origin/main` HEAD（archive PoC）:** `fb19b2a968f233317a0f015fd5c09128dfde7c54`
 **Live probe base main:** `f4ba15f85b99fe995c5af94af07f7570becc683a`（PR #44 MERGED）
+**PR #45:** Draft（live schema probe）
 **PR #44:** MERGED（offline archive）
 **Semantics Gate:** [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md)（PR #43 MERGED）
 **Contract SoT:** [`forward-self-archive-design.md`](forward-self-archive-design.md)
@@ -215,7 +216,7 @@ Fixture: `massive-ticker-events-meta-sanitized.json`（**synthetic / sanitized /
 
 | Option | Select? |
 | --- | --- |
-| A. Live Ticker Events schema probe / live archive validation | **DONE**（`LIVE_SCHEMA_VERIFIED`；XYZ × 1 request） |
+| A. Live Ticker Events schema probe / live archive validation | **DONE（PR #45）**（`LIVE_SCHEMA_VERIFIED`；XYZ × 1 request） |
 | **B. Ticker Events ↔ Overview share_class corroboration PoC**（TICKER_CHANGE_CANDIDATE；SecurityId なし） | **YES（次工程候補）** |
 | C. FIGI consistency PoC | 別軸 |
 | D. SecurityId issuance | **禁止** |
