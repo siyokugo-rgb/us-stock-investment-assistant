@@ -157,8 +157,9 @@
 | Item | Repo fact |
 | --- | --- |
 | Feasibility 言及 | `security-master-feasibility-poc.md` — Massive Ticker Events = ticker history **PARTIAL** |
+| Semantics Gate | [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md)（公式一次資料；experimental；live なし） |
 | 実装 | **無し**（client / archive / validator / test なし） |
-| 公式 old/new/effective の本 repo 突合 | **未実施**（本 Gate で非公式資料から確定しない） |
+| 公式 old/new/effective の本 repo 突合 | Semantics Gate で公式 sample まで固定；明示 `old_ticker`/`new_ticker` field **無し** |
 
 ### 仮に今後 archive する場合の禁止（先取り固定）
 
@@ -166,9 +167,9 @@
 | --- | --- |
 | event/effective date → `knownAt` | **禁止** |
 | event だけで Security continuity **確定** | **不可**（FIGI/share-class 等との接続が要る） |
-| event を ticker-change **evidence candidate** に使う | **CONDITIONAL**（実装後に別 Gate） |
+| event を ticker-change **evidence candidate** に使う | **CONDITIONAL**（Semantics Gate；archive PoC 後に再評価） |
 
-**現状 verdict:** Ticker Events = **PARTIAL / UNRESOLVED**（契約上有望だが evidence 未取得）。
+**現状 verdict:** Ticker Events = **PARTIAL / UNRESOLVED**（Semantics Gate 済み；evidence archive 未取得）。
 
 ---
 
@@ -300,7 +301,7 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | --- | --- | --- |
 | Provider ticker join | **CONDITIONAL PASS** | 同一 as-of / 同一 provider namespace の exact match のみ |
 | Cross-time Security continuity | **NO-GO（現状）** | 文字列一致不可；FIGI 一致でも CANDIDATE 止まり・欠落補間不可 |
-| Ticker-change handling | **Contract PASS / Evidence PARTIAL** | 契約は固定；Ticker Events 未実装 |
+| Ticker-change handling | **Contract PASS / Evidence PARTIAL** | 契約は固定；Semantics Gate 済み；archive 未 |
 | Ticker-recycle handling | **Contract PASS / Evidence PARTIAL** | 契約は固定；FIGI 変化は候補 |
 | Listing identity | **PARTIAL** | OpenFIGI venue-level `figi` candidate；Massive `primary_exchange` は provider-declared ISO-code evidence（≠ MIC/listing resolved） |
 | Share-class identity | **PARTIAL** | `share_class_figi` / `shareClassFIGI` |
@@ -321,7 +322,7 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | `SecurityIdentifier.knownAt` / validity を現行 archive から生成不可 | **Critical** |
 | Ticker recycle の確定手順が候補段階 | **Critical** |
 | 現行 `SecurityIdentifier` に namespace / granularity が無く venue/composite/share-class FIGI を安全格納できない | **High**（今回コード修正なし；mapping NO-GO 維持；source 埋め込み回避禁止） |
-| Ticker Events 未実装・knownAt 未確立 | **High** |
+| Ticker Events 未 archive・knownAt 未確立 | **High**（Semantics Gate: [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md)） |
 | Massive vs OpenFIGI FIGI 粒度整合 / conflict 規則の実装層なし | **High** |
 | Listing MIC ↔ price venue semantics | **High**（独立；本 Gate 非解決） |
 | SecurityId 発行ポリシー不在 | **High**（意図的 NO-GO） |
@@ -332,21 +333,18 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 
 | Option | Select? |
 | --- | --- |
-| **A. Security identity continuity evidence 最小 PoC（synthetic-first）** | **DONE** → [`security-identity-continuity-evidence-poc.md`](security-identity-continuity-evidence-poc.md) |
-| **B. Real multi-as-of Massive continuity evidence 検証（Overview dated snapshots）** | **YES（次工程候補）** |
-| C. Ticker Event archive PoC | 後続（change effective date が不足と判明したら） |
-| D. FIGI consistency PoC（Massive↔OpenFIGI） | B の後でも可 |
-| E. Multi-evidence conflict PoC（currency） | 別軸 |
+| A. Security identity continuity evidence 最小 PoC（synthetic-first） | **DONE** → [`security-identity-continuity-evidence-poc.md`](security-identity-continuity-evidence-poc.md) |
+| B. Real multi-as-of Massive continuity evidence 検証（Overview dated snapshots） | **DONE / LIVE_VERIFIED**（PR #42） |
+| C. Massive Ticker Events Semantics Gate Review | **DONE（PR #43）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
+| **D. Ticker Events forward archive PoC** | **YES（次工程）** |
+| E. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
+| F. SecurityId issuance 実装 | **禁止** |
 
-**A（完了）の範囲:**
+**B（完了）:** 実 Massive 複数 provider as-of archive を既存 Fail-Closed deriver へ通し identity continuity candidate を再現（`LIVE_VERIFIED`）。SecurityId / knownAt / validity / DailyPrice / Backtest の GO ではない。
 
-1. 既存 archive model / requestKey / validator を **再利用**
-2. **synthetic fixtures** で T1/T2 cross-time cases を構築
-3. `CONTINUITY_CANDIDATE` / `TICKER_CHANGE_CANDIDATE` / `RECYCLE_CANDIDATE` / `UNRESOLVED` / `CONFLICT` を Fail-Closed 検証
-4. `SecurityId` / `SecurityIdentifier` / `knownAt` / validity **生成なし**
-5. synthetic PASS ≠ real multi-as-of evidence PASS
+**C（完了）:** 公式一次資料で Ticker Events semantics / 時間意味 / acceptance を固定。client / archive 未実装。
 
-**B 選定理由:** synthetic Fail-Closed は固定済み。次の blocking は実 provider 複数 as-of での候補再現可否。
+**D 選定理由:** Semantics Gate 済み。次は experimental raw の possession 境界（forward archive + Fail-Closed validator）。SecurityId 実装へ直接進まない。
 
 ---
 
@@ -356,6 +354,7 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 - [`security-master-acceptance-criteria.md`](security-master-acceptance-criteria.md)
 - [`security-master-feasibility-poc.md`](security-master-feasibility-poc.md)
 - [`security-identity-continuity-evidence-poc.md`](security-identity-continuity-evidence-poc.md)
+- [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md)
 - [`venue-listing-identity-gate-review.md`](venue-listing-identity-gate-review.md)
 - [`trading-currency-temporal-applicability-gate.md`](trading-currency-temporal-applicability-gate.md)
 - [`openfigi-forward-archive-poc.md`](openfigi-forward-archive-poc.md)
