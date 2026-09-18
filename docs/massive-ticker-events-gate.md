@@ -51,24 +51,29 @@
 
 ### Response Attributes（公式表）
 
-| Field | Type | Official description |
-| --- | --- | --- |
-| `request_id` | string | server-assigned request id |
-| `results` | object | requested event data |
-| `results.events` | array[object] | event array |
-| `results.name` | string | asset name |
-| `status` | string | response status |
+公式 Response Attributes では以下 root / nested root fields は **optional**（本表 Optional 列）。欠落・空・null の **意味**は補完しない（下記 UNKNOWN）。
+
+| Field | Type | Optional | Official description |
+| --- | --- | --- | --- |
+| `request_id` | string | **Yes** | server-assigned request id |
+| `results` | object | **Yes** | requested event data |
+| `results.events` | array[object] | **Yes** | event array |
+| `results.name` | string | **Yes** | asset name |
+| `status` | string | **Yes** | response status |
+
+**KNOWN（schema）:** `results.events` を含む上表 fields は公式 schema 上 **optional**。
+**UNKNOWN（意味）:** 欠落の意味 / empty array の意味 / `null` が実際に返るか / no-event を意味するか / entitlement や history cutoff を意味するか / provider completeness — いずれも **推測禁止**。
 
 ### Sample response に現れる event object shape（公式 sample）
 
 公式 Response Attributes は event 内 field を表形式で列挙していない。sample に **現れる** keys のみ記録する（推測で拡張しない）:
 
-| Observed in sample | Shape |
-| --- | --- |
-| `type` | string；sample 値 `"ticker_change"` |
-| `date` | string；sample 値 `YYYY-MM-DD` |
-| `ticker_change` | object |
-| `ticker_change.ticker` | string；sample では各 event に **1 つの ticker**（例: `"META"`, `"FB"`） |
+| Observed in sample | Shape | required / optional / nullable |
+| --- | --- | --- |
+| `type` | string；sample 値 `"ticker_change"` | **UNKNOWN**（sample observed のみ） |
+| `date` | string；sample 値 `YYYY-MM-DD` | **UNKNOWN**（sample observed のみ） |
+| `ticker_change` | object | **UNKNOWN**（sample observed のみ） |
+| `ticker_change.ticker` | string；sample では各 event に **1 つの ticker**（例: `"META"`, `"FB"`） | **UNKNOWN**（sample observed のみ） |
 
 **公式に存在しない（本 Gate で発明しない）field 名:** `old_ticker` / `new_ticker` / `from` / `to` / `effective_at` / `announced_at` / `known_at` / event `source` / pagination cursors。
 
@@ -94,8 +99,10 @@ Plan History 総注記: Records date back to September 10, 2003（プラン別�
 
 | Topic | Status |
 | --- | --- |
-| event 内 field の必須 / optional / nullable | **UNKNOWN**（Attributes 表に event 内列挙なし） |
-| `results.events` 欠落・空配列・`null` の意味 | **UNKNOWN** |
+| root `request_id` / `results` / `results.events` / `results.name` / `status` の schema optionality | **KNOWN: optional**（公式 Response Attributes） |
+| 上記 optional fields の欠落・empty・`null`・no-event・entitlement/history cutoff・completeness としての **意味** | **UNKNOWN** |
+| event 内 `type` / `date` / `ticker_change` / `ticker_change.ticker` の必須 / optional / nullable | **UNKNOWN**（Attributes 表に event 内列挙なし；sample observed のみ） |
+| `results.events` 欠落・空配列・`null` の意味 | **UNKNOWN**（schema optional であることとは別） |
 | `results.name` 欠落時の扱い | **UNKNOWN** |
 | `results` に sample 外 field（例: FIGI/CIK）が公式 Attributes で保証されるか | **UNKNOWN**（Attributes は `events` / `name` のみ） |
 | event `date` が effective / announcement / listing / other のいずれかか | **UNKNOWN**（公式は `date` とのみ） |

@@ -335,14 +335,16 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | --- | --- |
 | A. Security identity continuity evidence 最小 PoC（synthetic-first） | **DONE** → [`security-identity-continuity-evidence-poc.md`](security-identity-continuity-evidence-poc.md) |
 | B. Real multi-as-of Massive continuity evidence 検証（Overview dated snapshots） | **DONE / LIVE_VERIFIED**（PR #42） |
-| **C. Massive Ticker Events Semantics Gate Review** | **YES（本工程）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
-| D. Ticker Events forward archive PoC | C の次候補（Semantics Gate 選定） |
+| C. Massive Ticker Events Semantics Gate Review | **DONE（PR #43）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
+| **D. Ticker Events forward archive PoC** | **YES（次工程）** |
 | E. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
 | F. SecurityId issuance 実装 | **禁止** |
 
 **B（完了）:** 実 Massive 複数 provider as-of archive を既存 Fail-Closed deriver へ通し identity continuity candidate を再現（`LIVE_VERIFIED`）。SecurityId / knownAt / validity / DailyPrice / Backtest の GO ではない。
 
-**C 選定理由:** continuity の real validation は完了。残 High の Ticker Events は **実装前に公式 semantics を固定**する必要がある。SecurityId 実装へ直接進まない。
+**C（完了）:** 公式一次資料で Ticker Events semantics / 時間意味 / acceptance を固定。client / archive 未実装。
+
+**D 選定理由:** Semantics Gate 済み。次は experimental raw の possession 境界（forward archive + Fail-Closed validator）。SecurityId 実装へ直接進まない。
 
 ---
 

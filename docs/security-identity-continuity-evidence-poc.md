@@ -279,13 +279,13 @@ SecurityId issuance / SecurityIdentifier / knownAt / validFrom·validTo / identi
 | Option | Select? |
 | --- | --- |
 | A. Re-run live Overview multi-as-of validation with MASSIVE_API_KEY set | **DONE**（`LIVE_VERIFIED`；追加 live request 不要） |
-| B. Massive Ticker Events Semantics Gate Review | **YES（進行中）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
-| C. Ticker Events forward archive PoC | B の次（Semantics Gate 選定） |
+| B. Massive Ticker Events Semantics Gate Review | **DONE（PR #43）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
+| **C. Ticker Events forward archive PoC** | **YES（次工程）** |
 | D. Massive↔OpenFIGI FIGI consistency PoC | 後続 |
 | E. Cross-source Overview↔All Tickers continuity Gate | 別軸 |
 | F. SecurityId issuance 実装 | **禁止**（Critical NO-GO のまま） |
 
-選定理由: live multi-as-of continuity 再現は完了。Ticker Events は **実装前に公式 semantics Gate** を先行する。archive PoC / SecurityId 実装へ直接進まない。
+選定理由: Semantics Gate（PR #43）で公式意味境界は固定済み。次は Ticker Events forward archive PoC（raw + validator）。SecurityId 実装へ直接進まない。
 
 ---
 
