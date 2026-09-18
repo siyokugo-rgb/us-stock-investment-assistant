@@ -291,7 +291,7 @@ CONDITIONAL にもしない。根拠不足なら NO-GO を維持する方針に�
 | **次:** Security identity continuity evidence 最小 PoC | **YES**（identity Gate 選定） |
 
 **選定理由（Temporal Gate 時点）:** identity blocking。
-**Identity Gate 後の次工程:** 既存 as-of archive 横比較による continuity/recycle candidate PoC（SecurityId / knownAt 生成なし）。
+**Identity Gate 後の次工程:** Security identity continuity evidence 最小 PoC（**synthetic-first**；SecurityId / SecurityIdentifier / knownAt 生成なし；synthetic PASS ≠ real cross-time PASS）。
 
 ---
 

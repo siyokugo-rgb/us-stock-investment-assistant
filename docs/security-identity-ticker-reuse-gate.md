@@ -14,10 +14,10 @@
 | Ticker-change handling（evidence） | **PARTIAL / UNRESOLVED** — 実データで確定する経路は未完成 |
 | Ticker-recycle handling（contract） | **PASS（契約固定）** — 別 SecurityId；文字列 join 禁止 |
 | Ticker-recycle handling（evidence） | **PARTIAL / UNRESOLVED** — FIGI 変化は recycle **候補**；自動確定禁止 |
-| Listing identity | **PARTIAL** — OpenFIGI venue-level `figi` candidate あり；MIC 未解決 |
+| Listing identity | **PARTIAL** — OpenFIGI venue-level `figi` candidate；`primary_exchange` は provider-declared ISO-code evidence（≠ MIC/listing resolved） |
 | Share-class identity | **PARTIAL** — `shareClassFIGI` / `share_class_figi` evidence candidate |
 | Internal SecurityId issuance | **NO-GO** |
-| SecurityIdentifier validity periods | **NO-GO** — `validFrom` / `validTo` / `knownAt` を現行 archive から生成禁止 |
+| SecurityIdentifier validity periods | **NO-GO** — validity/knownAt 生成禁止；namespace/granularity 構造不足（§H.1） |
 | Historical / PIT safety | **NO-GO** |
 | Trading Currency temporal applicability | **UNRESOLVED 維持**（PR #39） |
 | DailyPrice.currency | **NO-GO** |
@@ -88,7 +88,7 @@
 | OpenFIGI `figi` | listing / venue-level external identity **candidate** | venue Gate §5.1 | SecurityId；自動 MIC |
 | `compositeFIGI` / `composite_figi` | composite / market aggregate | venue Gate §5.2；Massive Overview docs paraphrased in join-gate | venue-level FIGI と同一視；SecurityId |
 | `shareClassFIGI` / `share_class_figi` | share-class aggregate | venue Gate §5.3；GOOG/GOOGL 潰し禁止 | listing FIGI；SecurityId |
-| `primary_exchange` | venue/MIC **hint**（Massive は ISO MIC 例あり） | identity そのものではない | SecurityId；listing 確定の単独根拠 |
+| `primary_exchange` | Massive **provider-declared primary listing exchange ISO-code evidence**（raw/provider） | ≠ internal MIC resolved；≠ listing identity resolved | SecurityId；venue resolved；MIC resolved への昇格 |
 | `cik` | Issuer / filing-entity side | `IdentifierType` に CIK 無し | SecurityId；SecurityIdentifier |
 | OpenFIGI `exchCode` | OpenFIGI exchange code | ≠ ISO MIC | MIC 無根拠変換 |
 
@@ -133,7 +133,7 @@
 | identifier namespace | `figi` vs Massive composite/share_class 文字列を混ぜない |
 | 粒度 | listing / composite / share-class を取り違えない |
 | share class | GOOG/GOOGL 等の潰し禁止 |
-| listing / venue | MIC / exchCode 未解決を listing 確定に使わない |
+| listing / venue | `primary_exchange` は provider-declared ISO-code evidence；MIC/listing resolved とみなさない |
 | provenance | requestKey / raw hash / OBSERVED |
 | provider as-of | `date=` selector；≠ knownAt |
 | evidence availability | `eligibilityBoundaryAt` / bindingEligibleAt；≠ validFrom |
@@ -229,12 +229,41 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 
 ## H. `SecurityIdentifier` mapping 可否
 
+### H.1 現行モデル limitation（High・今回コード修正なし）
+
+現行 `SecurityIdentifier`:
+
+- `securityId`, `type`, `value`, `validFrom`, `validTo`, `knownAt`, `ingestedAt`, `source`
+
+現行 `IdentifierType`:
+
+- `TICKER`
+- `VENDOR_PERMANENT_ID`
+
+一方 [`security-master-acceptance-criteria.md`](security-master-acceptance-criteria.md) は external identifier に **namespace** と **granularity** を要求する。
+
+したがって現行モデルでは、次を安全に区別して `SecurityIdentifier` へ格納する構造が **不足**:
+
+- venue-level FIGI
+- composite FIGI
+- share-class FIGI
+
+| Rule | Verdict |
+| --- | --- |
+| 本 Gate で `SecurityIdentifier` / `IdentifierType` をコード修正するか | **しない** |
+| `SecurityIdentifier` mapping / 行生成 | **NO-GO（維持）** |
+| 次の continuity evidence PoC で `SecurityIdentifier` を生成するか | **しない** |
+| `source` 文字列へ namespace/granularity を埋め込み、business logic で parse する回避策 | **禁止** |
+| 将来 SecurityId issuance / identifier adoption Gate で必要性を再評価するか | **YES** |
+
+### H.2 個別 mapping 案
+
 現行モデル必須: `securityId`, `type`, `value`, `validFrom`, `validTo?`, `knownAt`, `ingestedAt`, `source`。
 
 | Mapping idea | Gate verdict |
 | --- | --- |
 | Massive/OpenFIGI ticker → `type=TICKER` value | 値の **候補**にはなり得るが SecurityId 紐付け不可のため **行生成 NO-GO** |
-| FIGI → `VENDOR_PERMANENT_ID` | namespace/粒度未整理のまま生成 **禁止**；SecurityId も無い |
+| FIGI → `VENDOR_PERMANENT_ID` | namespace/granularity 構造不足のまま生成 **禁止**（§H.1）；SecurityId も無い |
 | Overview `list_date` → ticker `validFrom` | **禁止**（Overview PoC 明記） |
 | `delisted_utc` → ticker `validTo` | **禁止**（形式確認のみ） |
 | Ticker Event effective → identifier boundary | **未実装**；knownAt 転用禁止；採用は別 Gate |
@@ -242,7 +271,7 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | archive `ingestedAt` → `SecurityIdentifier.ingestedAt` | possession としては近いが、単独で master 行を正当化しない |
 | archive から `knownAt` 生成 | **禁止**（現行 Massive/OpenFIGI retail path で historical knownAt FAIL） |
 
-**結論:** 現行 evidence から完全な `SecurityIdentifier` 行は **生成禁止**。
+**結論:** 現行 evidence から完全な `SecurityIdentifier` 行は **生成禁止**。次 PoC も生成しない。
 
 ---
 
@@ -273,10 +302,10 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | Cross-time Security continuity | **NO-GO（現状）** | 文字列一致不可；FIGI 一致でも CANDIDATE 止まり・欠落補間不可 |
 | Ticker-change handling | **Contract PASS / Evidence PARTIAL** | 契約は固定；Ticker Events 未実装 |
 | Ticker-recycle handling | **Contract PASS / Evidence PARTIAL** | 契約は固定；FIGI 変化は候補 |
-| Listing identity | **PARTIAL** | OpenFIGI venue `figi` candidate；MIC/price venue 未結線 |
+| Listing identity | **PARTIAL** | OpenFIGI venue-level `figi` candidate；Massive `primary_exchange` は provider-declared ISO-code evidence（≠ MIC/listing resolved） |
 | Share-class identity | **PARTIAL** | `share_class_figi` / `shareClassFIGI` |
 | Internal SecurityId issuance | **NO-GO** | |
-| SecurityIdentifier validity periods | **NO-GO** | list_date/delisted/date→valid*/knownAt 禁止 |
+| SecurityIdentifier validity periods | **NO-GO** | list_date/delisted/date→valid*/knownAt 禁止；namespace/granularity 構造不足（§H.1） |
 | Historical / PIT safety | **NO-GO** | |
 | Trading Currency temporal applicability | **UNRESOLVED 維持** | PR #39 |
 | DailyPrice.currency | **NO-GO** | |
@@ -291,6 +320,7 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | Cross-time continuity を ticker だけで扱えない | **Critical**（本 Gate 確認） |
 | `SecurityIdentifier.knownAt` / validity を現行 archive から生成不可 | **Critical** |
 | Ticker recycle の確定手順が候補段階 | **Critical** |
+| 現行 `SecurityIdentifier` に namespace / granularity が無く venue/composite/share-class FIGI を安全格納できない | **High**（今回コード修正なし；mapping NO-GO 維持；source 埋め込み回避禁止） |
 | Ticker Events 未実装・knownAt 未確立 | **High** |
 | Massive vs OpenFIGI FIGI 粒度整合 / conflict 規則の実装層なし | **High** |
 | Listing MIC ↔ price venue semantics | **High**（独立；本 Gate 非解決） |
@@ -302,14 +332,23 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 
 | Option | Select? |
 | --- | --- |
-| **A. Security identity continuity evidence 最小 PoC**（既存 All Tickers/Overview as-of archive を横比較し、CONTINUITY/RECYCLE/UNRESOLVED/CONFLICT candidate を Fail-Closed で出す。SecurityId / validity / knownAt 生成なし） | **YES** |
+| **A. Security identity continuity evidence 最小 PoC（synthetic-first）** | **YES** |
 | B. Ticker Event archive PoC | 後続（change effective date が A で不足と判明したら） |
 | C. FIGI consistency PoC（Massive↔OpenFIGI） | A の後でも可 |
 | D. Share-class-only PoC | A に内包 |
 | E. Multi-evidence conflict PoC（currency） | 別軸 |
 
-**選定理由:**  
-blocking は「cross-time をどう判別するか」の **evidence 規則の実装検証**。既存 archive に `ticker` + `composite_figi` / `share_class_figi` + `date` は既にある。Ticker Events は未実装で knownAt も解けない。まず A で snapshot 横比較の Fail-Closed を固定する。
+**A の正確な範囲:**
+
+1. 既存 archive model / requestKey / validator を **再利用**
+2. **synthetic fixtures** で T1/T2 cross-time cases を構築
+3. `CONTINUITY_CANDIDATE` / `RECYCLE_CANDIDATE` / `UNRESOLVED` / `CONFLICT` を Fail-Closed 検証
+4. `SecurityId` / `SecurityIdentifier` / `knownAt` / validity **生成なし**
+5. 現行 sanitized test resources だけでは複数 as-of の **real** cross-time continuity を証明できない
+6. 実 provider の複数 as-of archive が使える場合は別途 live/evidence 確認してよいが、**synthetic PASS ≠ real cross-time evidence PASS**
+
+**選定理由:**
+blocking は cross-time 判別規則の実装検証。まず synthetic-first で Fail-Closed を固定する。
 
 ---
 
