@@ -126,7 +126,9 @@ DailyPrice.currency / DailyPrice / SecurityId / MIC / Venue resolved / bar-level
 
 ## Next
 
-Overview optional corroboration、または Venue/MIC Gate、または temporal applicability Gate。  
+**次の単一工程:** [`trading-currency-temporal-applicability-gate.md`](trading-currency-temporal-applicability-gate.md)（本 Gate Review）。
+
+Overview optional corroboration、Venue/MIC Gate は別軸。
 **DailyPrice.currency はまだ開けない。**
 
 ---
