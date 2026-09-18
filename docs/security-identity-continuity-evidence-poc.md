@@ -65,13 +65,24 @@ Package: `archive.poc.binding`
 
 ### Evidence fields（監査最低限）
 
-`earlierArchiveId` / `laterArchiveId` / `source` / earlier·later `providerTicker` / `providerAsOfDate` / `eligibilityBoundaryAt` / `evidenceEligibleAt` / `shareClassFigi` / `compositeFigi` / `primaryExchange` / `status` / `reason`
+`firstArchiveId` / `secondArchiveId` / `firstSource` / `secondSource` / first·second `providerTicker` / `providerAsOfDate` / `eligibilityBoundaryAt` / `evidenceEligibleAt` / `shareClassFigi` / `compositeFigi` / `primaryExchange` / `status` / `reason`
 
+- **first / second:** presentation slots。**candidate のみ** deriver が first=earlier / second=later（provider as-of `date=`）へ正規化。date 欠落・same-as-of・SOURCE_* では archiveId 等の決定論的 slot（**temporal earlier/later を主張しない**）
+- **firstSource / secondSource:** 両入力の source provenance（`SOURCE_PAIR_MISMATCH` でも両方保持；単一 `source` へ潰さない）
 - **providerAsOfDate:** requestKey `date=` **のみ**（caller free-form date 禁止）
-- **evidenceEligibleAt:** `max(earlierEligibilityBoundaryAt, laterEligibilityBoundaryAt)`  
+- **evidenceEligibleAt:** `max(firstEligibilityBoundaryAt, secondEligibilityBoundaryAt)`  
   → **derived evidence availability only**  
   ≠ identity `validFrom` / `validTo` / `knownAt` / ticker validity / SecurityIdentifier validity
 
+### Candidate invariants（model `init` Fail-Closed）
+
+| Status | 追加制約 |
+| --- | --- |
+| 全 candidate | `reason==null`；`firstArchiveId != secondArchiveId`；`firstSource == secondSource`；両 as-of non-null かつ `firstDate < secondDate`；両 share_class nonblank；両 eligibility non-null；`evidenceEligibleAt == max(eligibility)` |
+| `CONTINUITY_CANDIDATE` | ticker 両 nonblank かつ一致；share_class 一致 |
+| `TICKER_CHANGE_CANDIDATE` | ticker 両 nonblank かつ不一致；share_class 一致 |
+| `RECYCLE_CANDIDATE` | ticker 両 nonblank かつ一致；share_class 不一致；両 composite nonblank かつ同一は **禁止**（Gate 上 CONFLICT） |
+| `UNRESOLVED` / `CONFLICT` | `reason != null` |
 ---
 
 ## Status semantics
@@ -123,9 +134,11 @@ Package: `archive.poc.binding`
 
 ## evidenceEligibleAt ≠ identity validity
 
-`evidenceEligibleAt = max(earlier, later eligibility)` は **derived evidence が利用可能になる時刻**。
+`evidenceEligibleAt = max(first, second eligibility)` は **derived evidence が利用可能になる時刻**。
 
 ≠ Security identity `validFrom` / `validTo` / `knownAt` / ticker validity / SecurityIdentifier validity。
+
+date omitted / INPUT_NOT_OBSERVED / SOURCE_* では first/second フィールド名から **時間順序を主張しない**（決定論的 presentation slot のみ）。
 
 ---
 
@@ -161,7 +174,7 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 2. OLD→NEW + same share_class → TICKER_CHANGE  
 3. same ticker + different share_class → RECYCLE  
 4. share_class missing → UNRESOLVED  
-5. date omitted → UNRESOLVED（ingest 順序なし）  
+5. date omitted → UNRESOLVED（ingest 順序なし；temporal earlier/later 偽装なし）  
 6. same as-of matching → no continuity elevate  
 7. same as-of conflicting → CONFLICT  
 8. same composite + different share_class → CONFLICT  
@@ -174,9 +187,11 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 15. Overview pair happy path  
 16. All Tickers pair（filter + resultCount=1）  
 17. All Tickers multi-row / no filter → UNRESOLVED  
-18. 引数左右逆でも earlier/later が as-of 基準で同一  
+18. 引数左右逆でも as-of 正規化後 first/second が同一  
 19. evidenceEligibleAt = max(eligibility)  
-20. model surface に SecurityId / SecurityIdentifier / knownAt / validFrom / validTo / DailyPrice 経路なし  
+20. model surface に SecurityId / SecurityIdentifier / knownAt / validFrom / validTo / DailyPrice / earlier* / later* 経路なし  
+21. cross-source → 両 source 保持  
+22. + manual construct invariant rejects（ticker/shareClass/source/eligibility/same-archive 等）
 
 ---
 

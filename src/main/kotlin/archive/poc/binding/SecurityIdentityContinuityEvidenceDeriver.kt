@@ -15,10 +15,17 @@ import java.nio.file.Path
 import java.time.Instant
 
 /**
- * Derives [SecurityIdentityContinuityEvidence] from two same-source Massive archives.
+ * Derives [SecurityIdentityContinuityEvidence] from two Massive archives.
  *
- * Ordering uses requestKey provider as-of `date=` only — never ingest/fetch/eligibility.
- * Cross-source Overview↔All Tickers compare is rejected ([SecurityIdentityContinuityReason.SOURCE_PAIR_MISMATCH]).
+ * Cross-time candidates normalize **first = earlier provider as-of**, **second = later**
+ * using requestKey `date=` only — never ingest/fetch/eligibility.
+ *
+ * When provider as-of cannot establish a cross-time order (missing date, same as-of,
+ * unsupported/mismatch shells), first/second are **deterministic presentation slots**
+ * (by archiveId) and do **not** claim temporal earlier/later.
+ *
+ * Cross-source Overview↔All Tickers compare is rejected
+ * ([SecurityIdentityContinuityReason.SOURCE_PAIR_MISMATCH]); both sources are retained.
  *
  * Forbidden: SecurityId / SecurityIdentifier / knownAt / validFrom/validTo generation,
  * caller free-form dates, caller-supplied raw bytes, latest-wins, MIC resolution.
@@ -48,28 +55,27 @@ object SecurityIdentityContinuityEvidenceDeriver {
         val leftSnap = loadSnapshot(left, leftKind)
         val rightSnap = loadSnapshot(right, rightKind)
 
-        val earlierLater = orderByProviderAsOf(leftSnap, rightSnap)
-        if (earlierLater == null) {
+        val da = leftSnap.providerAsOfDate
+        val db = rightSnap.providerAsOfDate
+        if (da.isNullOrBlank() || db.isNullOrBlank()) {
             // Prefer snapshot-level unresolved (e.g. non-OBSERVED never parsed date)
             // over PROVIDER_AS_OF_MISSING when both apply.
             val reason =
                 leftSnap.unresolvedReason
                     ?: rightSnap.unresolvedReason
                     ?: SecurityIdentityContinuityReason.PROVIDER_AS_OF_MISSING
-            return buildUnresolved(
-                a = leftSnap,
-                b = rightSnap,
-                earlier = leftSnap,
-                later = rightSnap,
-                reason = reason,
-            )
-        }
-        val (earlier, later) = earlierLater
-
-        if (earlier.providerAsOfDate == later.providerAsOfDate) {
-            return classifySameAsOf(earlier, later)
+            val (first, second) = presentationSlots(leftSnap, rightSnap)
+            return buildUnresolved(first, second, reason)
         }
 
+        if (da == db) {
+            val (first, second) = presentationSlots(leftSnap, rightSnap)
+            return classifySameAsOf(first, second)
+        }
+
+        // Distinct provider as-of: normalize first=earlier, second=later.
+        val (earlier, later) =
+            if (da < db) leftSnap to rightSnap else rightSnap to leftSnap
         return classifyCrossTime(earlier, later)
     }
 
@@ -97,6 +103,22 @@ object SecurityIdentityContinuityEvidenceDeriver {
             else -> null
         }
     }
+
+    /**
+     * Deterministic non-temporal presentation order by archiveId.
+     * Must not be described as provider as-of / temporal earlier-later.
+     */
+    private fun presentationSlots(
+        a: Snapshot,
+        b: Snapshot,
+    ): Pair<Snapshot, Snapshot> =
+        if (a.record.archiveId <= b.record.archiveId) a to b else b to a
+
+    private fun presentationSlots(
+        a: ManifestRecord,
+        b: ManifestRecord,
+    ): Pair<ManifestRecord, ManifestRecord> =
+        if (a.archiveId <= b.archiveId) a to b else b to a
 
     private fun loadSnapshot(
         record: ManifestRecord,
@@ -278,49 +300,29 @@ object SecurityIdentityContinuityEvidenceDeriver {
         }
     }
 
-    /**
-     * Returns (earlier, later) by provider as-of date, or null if either date omitted.
-     * Argument order does not matter.
-     */
-    private fun orderByProviderAsOf(
-        a: Snapshot,
-        b: Snapshot,
-    ): Pair<Snapshot, Snapshot>? {
-        val da = a.providerAsOfDate
-        val db = b.providerAsOfDate
-        if (da.isNullOrBlank() || db.isNullOrBlank()) return null
-        return if (da <= db) a to b else b to a
-    }
-
     private fun classifySameAsOf(
-        earlier: Snapshot,
-        later: Snapshot,
+        first: Snapshot,
+        second: Snapshot,
     ): SecurityIdentityContinuityEvidence {
-        if (earlier.unresolvedReason != null || later.unresolvedReason != null) {
+        if (first.unresolvedReason != null || second.unresolvedReason != null) {
             return buildUnresolved(
-                a = earlier,
-                b = later,
-                earlier = earlier,
-                later = later,
-                reason =
-                    earlier.unresolvedReason
-                        ?: later.unresolvedReason!!,
+                first,
+                second,
+                first.unresolvedReason ?: second.unresolvedReason!!,
             )
         }
-        if (identityLayerConflict(earlier, later)) {
-            return buildConflict(earlier, later)
+        if (identityLayerConflict(first, second)) {
+            return buildConflict(first, second)
         }
-        val scA = earlier.shareClassFigi
-        val scB = later.shareClassFigi
+        val scA = first.shareClassFigi
+        val scB = second.shareClassFigi
         if (!scA.isNullOrBlank() && !scB.isNullOrBlank() && scA != scB) {
-            return buildConflict(earlier, later)
+            return buildConflict(first, second)
         }
         return buildUnresolved(
-            a = earlier,
-            b = later,
-            earlier = earlier,
-            later = later,
-            reason = SecurityIdentityContinuityReason.SAME_AS_OF_NOT_CROSS_TIME,
+            first,
+            second,
+            SecurityIdentityContinuityReason.SAME_AS_OF_NOT_CROSS_TIME,
         )
     }
 
@@ -328,15 +330,12 @@ object SecurityIdentityContinuityEvidenceDeriver {
         earlier: Snapshot,
         later: Snapshot,
     ): SecurityIdentityContinuityEvidence {
+        // Candidate / conflict / unresolved for distinct as-of: first=earlier, second=later.
         if (earlier.unresolvedReason != null || later.unresolvedReason != null) {
             return buildUnresolved(
-                a = earlier,
-                b = later,
-                earlier = earlier,
-                later = later,
-                reason =
-                    earlier.unresolvedReason
-                        ?: later.unresolvedReason!!,
+                earlier,
+                later,
+                earlier.unresolvedReason ?: later.unresolvedReason!!,
             )
         }
 
@@ -348,11 +347,9 @@ object SecurityIdentityContinuityEvidenceDeriver {
         val scB = later.shareClassFigi
         if (scA.isNullOrBlank() || scB.isNullOrBlank()) {
             return buildUnresolved(
-                a = earlier,
-                b = later,
-                earlier = earlier,
-                later = later,
-                reason = SecurityIdentityContinuityReason.SHARE_CLASS_IDENTITY_MISSING,
+                earlier,
+                later,
+                SecurityIdentityContinuityReason.SHARE_CLASS_IDENTITY_MISSING,
             )
         }
 
@@ -360,11 +357,9 @@ object SecurityIdentityContinuityEvidenceDeriver {
         val tickerB = later.providerTicker
         if (tickerA.isNullOrBlank() || tickerB.isNullOrBlank()) {
             return buildUnresolved(
-                a = earlier,
-                b = later,
-                earlier = earlier,
-                later = later,
-                reason = SecurityIdentityContinuityReason.SNAPSHOT_AMBIGUOUS,
+                earlier,
+                later,
+                SecurityIdentityContinuityReason.SNAPSHOT_AMBIGUOUS,
             )
         }
 
@@ -390,11 +385,9 @@ object SecurityIdentityContinuityEvidenceDeriver {
             else ->
                 // Different ticker + different share_class: do not invent recycle/relationship.
                 buildUnresolved(
-                    a = earlier,
-                    b = later,
-                    earlier = earlier,
-                    later = later,
-                    reason = SecurityIdentityContinuityReason.SNAPSHOT_AMBIGUOUS,
+                    earlier,
+                    later,
+                    SecurityIdentityContinuityReason.SNAPSHOT_AMBIGUOUS,
                 )
         }
     }
@@ -430,87 +423,88 @@ object SecurityIdentityContinuityEvidenceDeriver {
         status: SecurityIdentityContinuityStatus,
     ): SecurityIdentityContinuityEvidence =
         SecurityIdentityContinuityEvidence(
-            earlierArchiveId = earlier.record.archiveId,
-            laterArchiveId = later.record.archiveId,
-            source = earlier.record.source,
-            earlierProviderTicker = earlier.providerTicker,
-            laterProviderTicker = later.providerTicker,
-            earlierProviderAsOfDate = earlier.providerAsOfDate,
-            laterProviderAsOfDate = later.providerAsOfDate,
-            earlierEligibilityBoundaryAt = earlier.record.eligibilityBoundaryAt,
-            laterEligibilityBoundaryAt = later.record.eligibilityBoundaryAt,
+            firstArchiveId = earlier.record.archiveId,
+            secondArchiveId = later.record.archiveId,
+            firstSource = earlier.record.source,
+            secondSource = later.record.source,
+            firstProviderTicker = earlier.providerTicker,
+            secondProviderTicker = later.providerTicker,
+            firstProviderAsOfDate = earlier.providerAsOfDate,
+            secondProviderAsOfDate = later.providerAsOfDate,
+            firstEligibilityBoundaryAt = earlier.record.eligibilityBoundaryAt,
+            secondEligibilityBoundaryAt = later.record.eligibilityBoundaryAt,
             evidenceEligibleAt =
                 maxElig(
                     earlier.record.eligibilityBoundaryAt,
                     later.record.eligibilityBoundaryAt,
                 ),
-            earlierShareClassFigi = earlier.shareClassFigi,
-            laterShareClassFigi = later.shareClassFigi,
-            earlierCompositeFigi = earlier.compositeFigi,
-            laterCompositeFigi = later.compositeFigi,
-            earlierPrimaryExchange = earlier.primaryExchange,
-            laterPrimaryExchange = later.primaryExchange,
+            firstShareClassFigi = earlier.shareClassFigi,
+            secondShareClassFigi = later.shareClassFigi,
+            firstCompositeFigi = earlier.compositeFigi,
+            secondCompositeFigi = later.compositeFigi,
+            firstPrimaryExchange = earlier.primaryExchange,
+            secondPrimaryExchange = later.primaryExchange,
             status = status,
             reason = null,
         )
 
     private fun buildConflict(
-        earlier: Snapshot,
-        later: Snapshot,
+        first: Snapshot,
+        second: Snapshot,
     ): SecurityIdentityContinuityEvidence =
         SecurityIdentityContinuityEvidence(
-            earlierArchiveId = earlier.record.archiveId,
-            laterArchiveId = later.record.archiveId,
-            source = earlier.record.source,
-            earlierProviderTicker = earlier.providerTicker,
-            laterProviderTicker = later.providerTicker,
-            earlierProviderAsOfDate = earlier.providerAsOfDate,
-            laterProviderAsOfDate = later.providerAsOfDate,
-            earlierEligibilityBoundaryAt = earlier.record.eligibilityBoundaryAt,
-            laterEligibilityBoundaryAt = later.record.eligibilityBoundaryAt,
+            firstArchiveId = first.record.archiveId,
+            secondArchiveId = second.record.archiveId,
+            firstSource = first.record.source,
+            secondSource = second.record.source,
+            firstProviderTicker = first.providerTicker,
+            secondProviderTicker = second.providerTicker,
+            firstProviderAsOfDate = first.providerAsOfDate,
+            secondProviderAsOfDate = second.providerAsOfDate,
+            firstEligibilityBoundaryAt = first.record.eligibilityBoundaryAt,
+            secondEligibilityBoundaryAt = second.record.eligibilityBoundaryAt,
             evidenceEligibleAt =
                 maxElig(
-                    earlier.record.eligibilityBoundaryAt,
-                    later.record.eligibilityBoundaryAt,
+                    first.record.eligibilityBoundaryAt,
+                    second.record.eligibilityBoundaryAt,
                 ),
-            earlierShareClassFigi = earlier.shareClassFigi,
-            laterShareClassFigi = later.shareClassFigi,
-            earlierCompositeFigi = earlier.compositeFigi,
-            laterCompositeFigi = later.compositeFigi,
-            earlierPrimaryExchange = earlier.primaryExchange,
-            laterPrimaryExchange = later.primaryExchange,
+            firstShareClassFigi = first.shareClassFigi,
+            secondShareClassFigi = second.shareClassFigi,
+            firstCompositeFigi = first.compositeFigi,
+            secondCompositeFigi = second.compositeFigi,
+            firstPrimaryExchange = first.primaryExchange,
+            secondPrimaryExchange = second.primaryExchange,
             status = SecurityIdentityContinuityStatus.CONFLICT,
             reason = SecurityIdentityContinuityReason.IDENTITY_LAYER_CONFLICT,
         )
 
     private fun buildUnresolved(
-        a: Snapshot,
-        b: Snapshot,
-        earlier: Snapshot,
-        later: Snapshot,
+        first: Snapshot,
+        second: Snapshot,
         reason: SecurityIdentityContinuityReason,
     ): SecurityIdentityContinuityEvidence =
         SecurityIdentityContinuityEvidence(
-            earlierArchiveId = earlier.record.archiveId,
-            laterArchiveId = later.record.archiveId,
-            source = a.record.source,
-            earlierProviderTicker = earlier.providerTicker,
-            laterProviderTicker = later.providerTicker,
-            earlierProviderAsOfDate = earlier.providerAsOfDate,
-            laterProviderAsOfDate = later.providerAsOfDate,
-            earlierEligibilityBoundaryAt = earlier.record.eligibilityBoundaryAt,
-            laterEligibilityBoundaryAt = later.record.eligibilityBoundaryAt,
+            firstArchiveId = first.record.archiveId,
+            secondArchiveId = second.record.archiveId,
+            firstSource = first.record.source,
+            secondSource = second.record.source,
+            firstProviderTicker = first.providerTicker,
+            secondProviderTicker = second.providerTicker,
+            firstProviderAsOfDate = first.providerAsOfDate,
+            secondProviderAsOfDate = second.providerAsOfDate,
+            firstEligibilityBoundaryAt = first.record.eligibilityBoundaryAt,
+            secondEligibilityBoundaryAt = second.record.eligibilityBoundaryAt,
             evidenceEligibleAt =
                 maxElig(
-                    earlier.record.eligibilityBoundaryAt,
-                    later.record.eligibilityBoundaryAt,
+                    first.record.eligibilityBoundaryAt,
+                    second.record.eligibilityBoundaryAt,
                 ),
-            earlierShareClassFigi = earlier.shareClassFigi,
-            laterShareClassFigi = later.shareClassFigi,
-            earlierCompositeFigi = earlier.compositeFigi,
-            laterCompositeFigi = later.compositeFigi,
-            earlierPrimaryExchange = earlier.primaryExchange,
-            laterPrimaryExchange = later.primaryExchange,
+            firstShareClassFigi = first.shareClassFigi,
+            secondShareClassFigi = second.shareClassFigi,
+            firstCompositeFigi = first.compositeFigi,
+            secondCompositeFigi = second.compositeFigi,
+            firstPrimaryExchange = first.primaryExchange,
+            secondPrimaryExchange = second.primaryExchange,
             status = SecurityIdentityContinuityStatus.UNRESOLVED,
             reason = reason,
         )
@@ -519,27 +513,30 @@ object SecurityIdentityContinuityEvidenceDeriver {
         left: ManifestRecord,
         right: ManifestRecord,
         reason: SecurityIdentityContinuityReason,
-    ): SecurityIdentityContinuityEvidence =
-        SecurityIdentityContinuityEvidence(
-            earlierArchiveId = left.archiveId,
-            laterArchiveId = right.archiveId,
-            source = left.source.ifBlank { right.source },
-            earlierProviderTicker = null,
-            laterProviderTicker = null,
-            earlierProviderAsOfDate = null,
-            laterProviderAsOfDate = null,
-            earlierEligibilityBoundaryAt = left.eligibilityBoundaryAt,
-            laterEligibilityBoundaryAt = right.eligibilityBoundaryAt,
-            evidenceEligibleAt = maxElig(left.eligibilityBoundaryAt, right.eligibilityBoundaryAt),
-            earlierShareClassFigi = null,
-            laterShareClassFigi = null,
-            earlierCompositeFigi = null,
-            laterCompositeFigi = null,
-            earlierPrimaryExchange = null,
-            laterPrimaryExchange = null,
+    ): SecurityIdentityContinuityEvidence {
+        val (first, second) = presentationSlots(left, right)
+        return SecurityIdentityContinuityEvidence(
+            firstArchiveId = first.archiveId,
+            secondArchiveId = second.archiveId,
+            firstSource = first.source.ifBlank { "unknown" },
+            secondSource = second.source.ifBlank { "unknown" },
+            firstProviderTicker = null,
+            secondProviderTicker = null,
+            firstProviderAsOfDate = null,
+            secondProviderAsOfDate = null,
+            firstEligibilityBoundaryAt = first.eligibilityBoundaryAt,
+            secondEligibilityBoundaryAt = second.eligibilityBoundaryAt,
+            evidenceEligibleAt = maxElig(first.eligibilityBoundaryAt, second.eligibilityBoundaryAt),
+            firstShareClassFigi = null,
+            secondShareClassFigi = null,
+            firstCompositeFigi = null,
+            secondCompositeFigi = null,
+            firstPrimaryExchange = null,
+            secondPrimaryExchange = null,
             status = SecurityIdentityContinuityStatus.UNRESOLVED,
             reason = reason,
         )
+    }
 
     private fun requireArchivedRawIntegrity(
         record: ManifestRecord,

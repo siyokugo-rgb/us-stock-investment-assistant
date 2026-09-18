@@ -18,6 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Synthetic-first QA for [SecurityIdentityContinuityEvidenceDeriver].
@@ -63,10 +64,10 @@ class SecurityIdentityContinuityEvidenceTest {
         val evidence = SecurityIdentityContinuityEvidenceDeriver.derive(t2, t1)
         assertEquals(SecurityIdentityContinuityStatus.CONTINUITY_CANDIDATE, evidence.status)
         assertNull(evidence.reason)
-        assertEquals("ov-t1", evidence.earlierArchiveId)
-        assertEquals("ov-t2", evidence.laterArchiveId)
-        assertEquals("2024-01-02", evidence.earlierProviderAsOfDate)
-        assertEquals("2024-06-01", evidence.laterProviderAsOfDate)
+        assertEquals("ov-t1", evidence.firstArchiveId)
+        assertEquals("ov-t2", evidence.secondArchiveId)
+        assertEquals("2024-01-02", evidence.firstProviderAsOfDate)
+        assertEquals("2024-06-01", evidence.secondProviderAsOfDate)
         assertEquals(eligT2, evidence.evidenceEligibleAt)
     }
 
@@ -92,8 +93,8 @@ class SecurityIdentityContinuityEvidenceTest {
             )
         val evidence = SecurityIdentityContinuityEvidenceDeriver.derive(t1, t2)
         assertEquals(SecurityIdentityContinuityStatus.TICKER_CHANGE_CANDIDATE, evidence.status)
-        assertEquals("OLD", evidence.earlierProviderTicker)
-        assertEquals("NEW", evidence.laterProviderTicker)
+        assertEquals("OLD", evidence.firstProviderTicker)
+        assertEquals("NEW", evidence.secondProviderTicker)
     }
 
     @Test
@@ -165,11 +166,26 @@ class SecurityIdentityContinuityEvidenceTest {
                 eligibility = eligT2,
                 shareClass = "BBG001S5N8V8",
             )
-        val evidence = SecurityIdentityContinuityEvidenceDeriver.derive(t1, t2)
-        assertEquals(SecurityIdentityContinuityStatus.UNRESOLVED, evidence.status)
+        val ab = SecurityIdentityContinuityEvidenceDeriver.derive(t1, t2)
+        val ba = SecurityIdentityContinuityEvidenceDeriver.derive(t2, t1)
+        assertEquals(SecurityIdentityContinuityStatus.UNRESOLVED, ab.status)
         assertEquals(
             SecurityIdentityContinuityReason.PROVIDER_AS_OF_MISSING,
-            evidence.reason,
+            ab.reason,
+        )
+        // Presentation slots by archiveId — not temporal earlier/later via eligibility/ingest.
+        assertEquals("ov-dated", ab.firstArchiveId)
+        assertEquals("ov-nodate", ab.secondArchiveId)
+        assertEquals(ab.firstArchiveId, ba.firstArchiveId)
+        assertEquals(ab.secondArchiveId, ba.secondArchiveId)
+        assertTrue(
+            ab.firstProviderAsOfDate == null || ab.secondProviderAsOfDate == null,
+        )
+        // Must not invent a temporal order that treats dated as earlier and undated as later.
+        assertFalse(
+            ab.firstProviderAsOfDate == "2024-01-02" &&
+                ab.secondProviderAsOfDate != null &&
+                ab.secondProviderAsOfDate!! > "2024-01-02",
         )
     }
 
@@ -305,8 +321,8 @@ class SecurityIdentityContinuityEvidenceTest {
             )
         val evidence = SecurityIdentityContinuityEvidenceDeriver.derive(t1, t2)
         assertEquals(SecurityIdentityContinuityStatus.CONTINUITY_CANDIDATE, evidence.status)
-        assertEquals("XNAS", evidence.earlierPrimaryExchange)
-        assertEquals("XNYS", evidence.laterPrimaryExchange)
+        assertEquals("XNAS", evidence.firstPrimaryExchange)
+        assertEquals("XNYS", evidence.secondPrimaryExchange)
     }
 
     @Test
@@ -427,7 +443,8 @@ class SecurityIdentityContinuityEvidenceTest {
                 shareClass = "BBG001S5N8V8",
             )
         val evidence = SecurityIdentityContinuityEvidenceDeriver.derive(t1, t2)
-        assertEquals(MassiveTickerOverviewArchiveClient.SOURCE, evidence.source)
+        assertEquals(MassiveTickerOverviewArchiveClient.SOURCE, evidence.firstSource)
+        assertEquals(MassiveTickerOverviewArchiveClient.SOURCE, evidence.secondSource)
         assertEquals(SecurityIdentityContinuityStatus.CONTINUITY_CANDIDATE, evidence.status)
     }
 
@@ -450,7 +467,8 @@ class SecurityIdentityContinuityEvidenceTest {
                 shareClass = "BBG001S5N8V8",
             )
         val evidence = SecurityIdentityContinuityEvidenceDeriver.derive(t1, t2)
-        assertEquals(MassiveAllTickersArchiveClient.SOURCE, evidence.source)
+        assertEquals(MassiveAllTickersArchiveClient.SOURCE, evidence.firstSource)
+        assertEquals(MassiveAllTickersArchiveClient.SOURCE, evidence.secondSource)
         assertEquals(SecurityIdentityContinuityStatus.CONTINUITY_CANDIDATE, evidence.status)
     }
 
@@ -536,10 +554,10 @@ class SecurityIdentityContinuityEvidenceTest {
             )
         val ab = SecurityIdentityContinuityEvidenceDeriver.derive(t1, t2)
         val ba = SecurityIdentityContinuityEvidenceDeriver.derive(t2, t1)
-        assertEquals(ab.earlierArchiveId, ba.earlierArchiveId)
-        assertEquals(ab.laterArchiveId, ba.laterArchiveId)
-        assertEquals(ab.earlierProviderAsOfDate, ba.earlierProviderAsOfDate)
-        assertEquals(ab.laterProviderAsOfDate, ba.laterProviderAsOfDate)
+        assertEquals(ab.firstArchiveId, ba.firstArchiveId)
+        assertEquals(ab.secondArchiveId, ba.secondArchiveId)
+        assertEquals(ab.firstProviderAsOfDate, ba.firstProviderAsOfDate)
+        assertEquals(ab.secondProviderAsOfDate, ba.secondProviderAsOfDate)
         assertEquals(ab.status, ba.status)
     }
 
@@ -591,6 +609,15 @@ class SecurityIdentityContinuityEvidenceTest {
             SecurityIdentityContinuityReason.SOURCE_PAIR_MISMATCH,
             evidence.reason,
         )
+        // Both input sources retained — do not collapse to left-only / same-source claim.
+        val sources = setOf(evidence.firstSource, evidence.secondSource)
+        assertEquals(
+            setOf(
+                MassiveTickerOverviewArchiveClient.SOURCE,
+                MassiveAllTickersArchiveClient.SOURCE,
+            ),
+            sources,
+        )
     }
 
     @Test
@@ -623,13 +650,174 @@ class SecurityIdentityContinuityEvidenceTest {
         assertFalse(names.any { it.equals("validFrom", ignoreCase = true) })
         assertFalse(names.any { it.equals("validTo", ignoreCase = true) })
         assertFalse(names.any { it.contains("DailyPrice", ignoreCase = true) })
+        assertFalse(names.any { it.startsWith("earlier") })
+        assertFalse(names.any { it.startsWith("later") })
         // Continuity candidate must not invent identity validity / SecurityId carriers
         assertNull(evidence.reason)
-        assertEquals("BBG001S5N8V8", evidence.earlierShareClassFigi)
-        assertEquals("BBG001S5N8V8", evidence.laterShareClassFigi)
+        assertEquals("BBG001S5N8V8", evidence.firstShareClassFigi)
+        assertEquals("BBG001S5N8V8", evidence.secondShareClassFigi)
+    }
+
+    @Test
+    fun argumentReverseYieldsSameOrderedCrossTimeCandidate() {
+        val early =
+            overviewRecord(
+                archiveId = "z-late-id",
+                ticker = "AAPL",
+                date = "2024-01-02",
+                eligibility = eligT1,
+                shareClass = "BBG001S5N8V8",
+            )
+        val late =
+            overviewRecord(
+                archiveId = "a-early-id",
+                ticker = "AAPL",
+                date = "2024-06-01",
+                eligibility = eligT2,
+                shareClass = "BBG001S5N8V8",
+            )
+        // archiveId order would prefer a-early-id first; as-of order must win for candidates.
+        val ab = SecurityIdentityContinuityEvidenceDeriver.derive(early, late)
+        val ba = SecurityIdentityContinuityEvidenceDeriver.derive(late, early)
+        assertEquals(SecurityIdentityContinuityStatus.CONTINUITY_CANDIDATE, ab.status)
+        assertEquals(ab, ba)
+        assertEquals("2024-01-02", ab.firstProviderAsOfDate)
+        assertEquals("2024-06-01", ab.secondProviderAsOfDate)
+        assertEquals("z-late-id", ab.firstArchiveId)
+        assertEquals("a-early-id", ab.secondArchiveId)
+    }
+
+    @Test
+    fun manualContinuityWithDifferentTickerIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validContinuityBase().copy(
+                firstProviderTicker = "AAPL",
+                secondProviderTicker = "MSFT",
+            )
+        }
+    }
+
+    @Test
+    fun manualContinuityWithDifferentShareClassIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validContinuityBase().copy(
+                firstShareClassFigi = "BBGSHARE_A",
+                secondShareClassFigi = "BBGSHARE_B",
+                firstCompositeFigi = "BBGCOMP_A",
+                secondCompositeFigi = "BBGCOMP_B",
+            )
+        }
+    }
+
+    @Test
+    fun manualTickerChangeWithSameTickerIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validTickerChangeBase().copy(
+                firstProviderTicker = "SAME",
+                secondProviderTicker = "SAME",
+            )
+        }
+    }
+
+    @Test
+    fun manualRecycleWithSameShareClassIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validRecycleBase().copy(
+                firstShareClassFigi = "BBGSHARE_SAME",
+                secondShareClassFigi = "BBGSHARE_SAME",
+            )
+        }
+    }
+
+    @Test
+    fun manualRecycleWithDifferentTickerIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validRecycleBase().copy(
+                firstProviderTicker = "AAA",
+                secondProviderTicker = "BBB",
+            )
+        }
+    }
+
+    @Test
+    fun candidateWithMismatchedSourcesIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validContinuityBase().copy(
+                firstSource = MassiveTickerOverviewArchiveClient.SOURCE,
+                secondSource = MassiveAllTickersArchiveClient.SOURCE,
+            )
+        }
+    }
+
+    @Test
+    fun candidateWithWrongEvidenceEligibleAtIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validContinuityBase().copy(
+                evidenceEligibleAt = Instant.parse("2020-01-01T00:00:00Z"),
+            )
+        }
+    }
+
+    @Test
+    fun candidateUsingSameArchiveOnBothSidesIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validContinuityBase().copy(
+                firstArchiveId = "same-id",
+                secondArchiveId = "same-id",
+            )
+        }
+    }
+
+    @Test
+    fun manualRecycleWithMatchingCompositeAndDifferentShareClassIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validRecycleBase().copy(
+                firstCompositeFigi = "BBGCOMP_SAME",
+                secondCompositeFigi = "BBGCOMP_SAME",
+            )
+        }
     }
 
     // --- helpers ---
+
+    private fun validContinuityBase(): SecurityIdentityContinuityEvidence =
+        SecurityIdentityContinuityEvidence(
+            firstArchiveId = "ov-a",
+            secondArchiveId = "ov-b",
+            firstSource = MassiveTickerOverviewArchiveClient.SOURCE,
+            secondSource = MassiveTickerOverviewArchiveClient.SOURCE,
+            firstProviderTicker = "AAPL",
+            secondProviderTicker = "AAPL",
+            firstProviderAsOfDate = "2024-01-02",
+            secondProviderAsOfDate = "2024-06-01",
+            firstEligibilityBoundaryAt = eligT1,
+            secondEligibilityBoundaryAt = eligT2,
+            evidenceEligibleAt = eligT2,
+            firstShareClassFigi = "BBG001S5N8V8",
+            secondShareClassFigi = "BBG001S5N8V8",
+            firstCompositeFigi = "BBG000B9XRY4",
+            secondCompositeFigi = "BBG000B9XRY4",
+            firstPrimaryExchange = "XNAS",
+            secondPrimaryExchange = "XNAS",
+            status = SecurityIdentityContinuityStatus.CONTINUITY_CANDIDATE,
+            reason = null,
+        )
+
+    private fun validTickerChangeBase(): SecurityIdentityContinuityEvidence =
+        validContinuityBase().copy(
+            firstProviderTicker = "OLD",
+            secondProviderTicker = "NEW",
+            status = SecurityIdentityContinuityStatus.TICKER_CHANGE_CANDIDATE,
+        )
+
+    private fun validRecycleBase(): SecurityIdentityContinuityEvidence =
+        validContinuityBase().copy(
+            firstShareClassFigi = "BBGSHARE_A",
+            secondShareClassFigi = "BBGSHARE_B",
+            firstCompositeFigi = "BBGCOMP_A",
+            secondCompositeFigi = "BBGCOMP_B",
+            status = SecurityIdentityContinuityStatus.RECYCLE_CANDIDATE,
+        )
 
     private data class AllTickersRow(
         val ticker: String,
