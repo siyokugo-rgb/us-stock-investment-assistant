@@ -67,6 +67,84 @@ class MassiveSecurityIdentityContinuityLivePocTest {
         assertFalse(MassiveSecurityIdentityContinuityLivePoc.DEFAULT_TICKERS.any { it.isBlank() })
     }
 
+    @Test
+    fun twoObservedPairsWithMissingShareClassAreLivePartialNotVerified() {
+        val outcomes =
+            listOf(
+                observedMissingShareClass("AAPL"),
+                observedMissingShareClass("MSFT"),
+            )
+        assertFalse(
+            outcomes.any { MassiveSecurityIdentityContinuityLivePoc.isIdentityEvaluable(it) },
+        )
+        assertEquals(
+            MassiveSecurityIdentityContinuityLivePoc.LiveClassification.LIVE_PARTIAL,
+            MassiveSecurityIdentityContinuityLivePoc.classifyOverall(outcomes),
+        )
+    }
+
+    @Test
+    fun oneIdentityEvaluablePlusOneMissingShareClassIsLivePartial() {
+        val outcomes =
+            listOf(
+                usable("AAPL"),
+                observedMissingShareClass("MSFT"),
+            )
+        assertEquals(
+            1,
+            outcomes.count { MassiveSecurityIdentityContinuityLivePoc.isIdentityEvaluable(it) },
+        )
+        assertEquals(
+            MassiveSecurityIdentityContinuityLivePoc.LiveClassification.LIVE_PARTIAL,
+            MassiveSecurityIdentityContinuityLivePoc.classifyOverall(outcomes),
+        )
+    }
+
+    @Test
+    fun twoIdentityEvaluableContinuityCandidatesAreLiveVerified() {
+        val outcomes = listOf(usable("AAPL"), usable("MSFT"))
+        assertEquals(
+            MassiveSecurityIdentityContinuityLivePoc.LiveClassification.LIVE_VERIFIED,
+            MassiveSecurityIdentityContinuityLivePoc.classifyOverall(outcomes),
+        )
+    }
+
+    @Test
+    fun twoIdentityEvaluableConflictPairsAreLiveVerifiedWithoutRequiringContinuity() {
+        val outcomes =
+            listOf(
+                identityEvaluableConflict("AAPL"),
+                identityEvaluableConflict("MSFT"),
+            )
+        assertTrue(outcomes.all { MassiveSecurityIdentityContinuityLivePoc.isIdentityEvaluable(it) })
+        assertEquals(
+            MassiveSecurityIdentityContinuityLivePoc.LiveClassification.LIVE_VERIFIED,
+            MassiveSecurityIdentityContinuityLivePoc.classifyOverall(outcomes),
+        )
+        assertTrue(
+            outcomes.none {
+                it.derivedStatus == SecurityIdentityContinuityStatus.CONTINUITY_CANDIDATE
+            },
+        )
+    }
+
+    @Test
+    fun anyIntegrityFailTakesPrecedenceOverIdentityEvaluableCount() {
+        val outcomes =
+            listOf(
+                usable("AAPL").copy(
+                    integrityFail = true,
+                    integrityFailNotes = "unexplained UNRESOLVED",
+                ),
+                usable("MSFT"),
+                usable("GOOGL"),
+            )
+        assertEquals(
+            MassiveSecurityIdentityContinuityLivePoc.LiveClassification.LIVE_FAIL,
+            MassiveSecurityIdentityContinuityLivePoc.classifyOverall(outcomes),
+        )
+    }
+
     private fun usable(ticker: String) =
         MassiveSecurityIdentityContinuityLivePoc.TickerPairOutcome(
             ticker = ticker,
@@ -106,6 +184,30 @@ class MassiveSecurityIdentityContinuityLivePocTest {
             secondPrimaryExchange = "XNAS",
             evidenceEligibleAt = Instant.parse("2026-09-18T04:01:00Z"),
             expectedContinuityWhenEligible = true,
+            integrityFail = false,
+            integrityFailNotes = null,
+        )
+
+    private fun observedMissingShareClass(ticker: String) =
+        usable(ticker).copy(
+            derivedStatus = SecurityIdentityContinuityStatus.UNRESOLVED,
+            derivedReason = SecurityIdentityContinuityReason.SHARE_CLASS_IDENTITY_MISSING,
+            firstShareClassFigi = null,
+            secondShareClassFigi = null,
+            expectedContinuityWhenEligible = false,
+            integrityFail = false,
+            integrityFailNotes = null,
+        )
+
+    private fun identityEvaluableConflict(ticker: String) =
+        usable(ticker).copy(
+            derivedStatus = SecurityIdentityContinuityStatus.CONFLICT,
+            derivedReason = SecurityIdentityContinuityReason.IDENTITY_LAYER_CONFLICT,
+            firstShareClassFigi = "BBGSHARE_A",
+            secondShareClassFigi = "BBGSHARE_B",
+            firstCompositeFigi = "BBGCOMP_SAME",
+            secondCompositeFigi = "BBGCOMP_SAME",
+            expectedContinuityWhenEligible = false,
             integrityFail = false,
             integrityFailNotes = null,
         )

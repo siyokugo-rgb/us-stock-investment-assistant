@@ -64,8 +64,8 @@ fun main() {
     val classification = MassiveSecurityIdentityContinuityLivePoc.classifyOverall(outcomes)
     println("liveClassification=$classification")
     println(
-        "usableObservedPairs=" +
-            outcomes.count { it.bothObserved && it.deriverCompleted },
+        "identityEvaluablePairs=" +
+            outcomes.count { MassiveSecurityIdentityContinuityLivePoc.isIdentityEvaluable(it) },
     )
     println("integrityFail=${outcomes.any { it.integrityFail }}")
 }
@@ -188,6 +188,20 @@ object MassiveSecurityIdentityContinuityLivePoc {
                 integrityNotes +=
                     "non-OBSERVED pair produced candidate status ${evidence.status}"
             }
+            // Same ticker T1/T2 with both share_class present must resolve to an
+            // identity-evaluable status (CONTINUITY / TICKER_CHANGE / RECYCLE / CONFLICT).
+            // UNRESOLVED here is unexplained by current Gate rules → integrityFail.
+            if (bothObserved &&
+                !evidence.firstShareClassFigi.isNullOrBlank() &&
+                !evidence.secondShareClassFigi.isNullOrBlank() &&
+                evidence.firstProviderTicker == ticker &&
+                evidence.secondProviderTicker == ticker &&
+                evidence.status == SecurityIdentityContinuityStatus.UNRESOLVED
+            ) {
+                integrityNotes +=
+                    "both share_class_figi present on same-ticker T1/T2 but status=UNRESOLVED " +
+                        "(reason=${evidence.reason}); unexplained by continuity Gate"
+            }
             TickerPairOutcome(
                 ticker = ticker,
                 t1 = t1,
@@ -240,17 +254,29 @@ object MassiveSecurityIdentityContinuityLivePoc {
         }
     }
 
+    /**
+     * Identity-evaluable pair: OBSERVED + deriver completed + both share_class present +
+     * derived status is not UNRESOLVED. Does **not** require CONTINUITY_CANDIDATE
+     * (RECYCLE / CONFLICT / TICKER_CHANGE remain valid when raw evidence matches).
+     */
+    fun isIdentityEvaluable(outcome: TickerPairOutcome): Boolean =
+        outcome.bothObserved &&
+            outcome.deriverCompleted &&
+            !outcome.integrityFail &&
+            !outcome.firstShareClassFigi.isNullOrBlank() &&
+            !outcome.secondShareClassFigi.isNullOrBlank() &&
+            outcome.derivedStatus != null &&
+            outcome.derivedStatus != SecurityIdentityContinuityStatus.UNRESOLVED
+
     fun classifyOverall(outcomes: List<TickerPairOutcome>): LiveClassification {
         if (outcomes.any { it.integrityFail }) return LiveClassification.LIVE_FAIL
-        val usable =
-            outcomes.count {
-                it.bothObserved && it.deriverCompleted && !it.integrityFail
-            }
+        val identityEvaluable = outcomes.count { isIdentityEvaluable(it) }
         return when {
-            usable >= 2 -> LiveClassification.LIVE_VERIFIED
-            usable == 1 -> LiveClassification.LIVE_PARTIAL
+            identityEvaluable >= 2 -> LiveClassification.LIVE_VERIFIED
+            identityEvaluable == 1 -> LiveClassification.LIVE_PARTIAL
             outcomes.any {
-                it.snapshotT1.observationStatus != null ||
+                it.bothObserved ||
+                    it.snapshotT1.observationStatus != null ||
                     it.snapshotT2.observationStatus != null
             } -> LiveClassification.LIVE_PARTIAL
             else -> LiveClassification.LIVE_UNVERIFIED

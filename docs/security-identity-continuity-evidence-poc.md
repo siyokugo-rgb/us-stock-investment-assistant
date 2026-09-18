@@ -229,11 +229,12 @@ multi-row / filter 無し → continuity 判定に使わず `UNRESOLVED`（valid
 
 | Classification | Meaning |
 | --- | --- |
-| `LIVE_VERIFIED` | ≥2 ticker で T1/T2 両 OBSERVED + integrity PASS |
-| `LIVE_PARTIAL` | provider 到達したが usable pair 不足等 |
+| `LIVE_VERIFIED` | ≥2 **identity-evaluable** pairs（両 OBSERVED + 両 `share_class_figi` nonblank + deriver 完了 + status ≠ UNRESOLVED + integrity PASS）。provider 到達だけでは足りない |
+| `LIVE_PARTIAL` | provider 到達したが identity-evaluable pair が 0〜1、optional identity field 欠損等 |
 | `LIVE_UNVERIFIED` | key 無し / 有効検証不可 |
 | `LIVE_FAIL` | raw↔deriver 矛盾 / invariant 違反等 |
 
+`LIVE_VERIFIED` は CONTINUITY_CANDIDATE 固定ではない（raw に従い RECYCLE / CONFLICT / TICKER_CHANGE も identity-evaluable 可）。  
 `LIVE_PARTIAL` は失敗と同一視しないが、real multi-as-of Gate PASS にも昇格しない。
 
 ---
