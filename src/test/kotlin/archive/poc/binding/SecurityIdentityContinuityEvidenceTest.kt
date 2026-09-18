@@ -264,6 +264,7 @@ class SecurityIdentityContinuityEvidenceTest {
                 date = "2024-01-02",
                 eligibility = eligT1,
                 shareClass = "BBGSHARE_A",
+                composite = "BBGCOMP_A",
             )
         val t2 =
             overviewRecord(
@@ -272,6 +273,7 @@ class SecurityIdentityContinuityEvidenceTest {
                 date = "2024-06-01",
                 eligibility = eligT2,
                 shareClass = "BBGSHARE_B",
+                composite = "BBGCOMP_B",
             )
         val evidence = SecurityIdentityContinuityEvidenceDeriver.derive(t1, t2)
         assertEquals(SecurityIdentityContinuityStatus.UNRESOLVED, evidence.status)
@@ -610,19 +612,21 @@ class SecurityIdentityContinuityEvidenceTest {
                 shareClass = "BBG001S5N8V8",
             )
         val evidence = SecurityIdentityContinuityEvidenceDeriver.derive(t1, t2)
-        val text = evidence.toString()
-        assertFalse(text.contains("SecurityId", ignoreCase = false))
-        assertFalse(text.contains("SecurityIdentifier"))
-        assertFalse(text.contains("knownAt", ignoreCase = true))
-        assertFalse(text.contains("validFrom", ignoreCase = true))
-        assertFalse(text.contains("validTo", ignoreCase = true))
-        assertFalse(text.contains("DailyPrice"))
-        // Field names must not include forbidden domain artifacts
-        val names = SecurityIdentityContinuityEvidence::class.java.declaredFields.map { it.name }
-        assertFalse(names.any { it.contains("securityId", ignoreCase = true) })
-        assertFalse(names.any { it.contains("knownAt", ignoreCase = true) })
-        assertFalse(names.any { it.contains("validFrom", ignoreCase = true) })
-        assertFalse(names.any { it.contains("validTo", ignoreCase = true) })
+        assertEquals(SecurityIdentityContinuityStatus.CONTINUITY_CANDIDATE, evidence.status)
+        val names =
+            SecurityIdentityContinuityEvidence::class.java.declaredFields
+                .map { it.name }
+                .filterNot { it == "Companion" }
+        assertFalse(names.any { it.equals("securityId", ignoreCase = true) })
+        assertFalse(names.any { it.contains("SecurityIdentifier", ignoreCase = true) })
+        assertFalse(names.any { it.equals("knownAt", ignoreCase = true) })
+        assertFalse(names.any { it.equals("validFrom", ignoreCase = true) })
+        assertFalse(names.any { it.equals("validTo", ignoreCase = true) })
+        assertFalse(names.any { it.contains("DailyPrice", ignoreCase = true) })
+        // Continuity candidate must not invent identity validity / SecurityId carriers
+        assertNull(evidence.reason)
+        assertEquals("BBG001S5N8V8", evidence.earlierShareClassFigi)
+        assertEquals("BBG001S5N8V8", evidence.laterShareClassFigi)
     }
 
     // --- helpers ---
@@ -757,8 +761,11 @@ class SecurityIdentityContinuityEvidenceTest {
         val key =
             requestKeyOverride
                 ?: MassiveTickerOverviewArchiveClient.requestKey(ticker, date)
+        val needsRaw =
+            status == ObservationStatus.OBSERVED ||
+                status == ObservationStatus.REJECTED_VALIDATION
         val path =
-            if (status == ObservationStatus.OBSERVED) {
+            if (needsRaw) {
                 writeRaw(MassiveTickerOverviewArchiveClient.SOURCE, archiveId, body)
             } else {
                 null
@@ -768,9 +775,17 @@ class SecurityIdentityContinuityEvidenceTest {
         }
         val hash =
             when {
-                status != ObservationStatus.OBSERVED -> null
+                !needsRaw -> null
                 rawHashOverride != null -> rawHashOverride
                 else -> Sha256Hex.of(body)
+            }
+        val effectiveElig =
+            when (status) {
+                ObservationStatus.OBSERVED -> eligibility
+                ObservationStatus.REJECTED_VALIDATION,
+                ObservationStatus.PROVIDER_FAILURE,
+                -> null
+                else -> eligibility
             }
         return ManifestRecord(
             archiveId = archiveId,
@@ -780,18 +795,25 @@ class SecurityIdentityContinuityEvidenceTest {
             attemptedAt = Instant.parse("2026-09-10T09:00:00Z"),
             attemptFinishedAt = Instant.parse("2026-09-10T09:00:30Z"),
             fetchedAt =
-                if (status == ObservationStatus.OBSERVED) {
-                    Instant.parse("2026-09-10T09:00:30Z")
-                } else {
-                    Instant.parse("2026-09-10T09:00:30Z")
+                when (status) {
+                    ObservationStatus.PROVIDER_FAILURE -> null
+                    else -> Instant.parse("2026-09-10T09:00:30Z")
                 },
             ingestedAt = Instant.parse("2026-09-10T09:01:00Z"),
             rawPayloadHash = hash,
             rawPayloadUri = path?.toString(),
-            httpStatus = 200,
-            transportStatus = TransportStatus.HTTP_RESPONSE,
+            httpStatus =
+                when (status) {
+                    ObservationStatus.PROVIDER_FAILURE -> null
+                    else -> 200
+                },
+            transportStatus =
+                when (status) {
+                    ObservationStatus.PROVIDER_FAILURE -> TransportStatus.TRANSPORT_FAILURE
+                    else -> TransportStatus.HTTP_RESPONSE
+                },
             observationStatus = status,
-            eligibilityBoundaryAt = eligibility,
+            eligibilityBoundaryAt = effectiveElig,
         )
     }
 
