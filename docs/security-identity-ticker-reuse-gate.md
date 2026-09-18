@@ -336,7 +336,7 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | A. Security identity continuity evidence 最小 PoC（synthetic-first） | **DONE** → [`security-identity-continuity-evidence-poc.md`](security-identity-continuity-evidence-poc.md) |
 | B. Real multi-as-of Massive continuity evidence 検証（Overview dated snapshots） | **DONE / LIVE_VERIFIED**（PR #42） |
 | C. Massive Ticker Events Semantics Gate Review | **DONE（PR #43）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
-| D. Ticker Events forward archive PoC | **DONE** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
+| D. Ticker Events forward archive PoC | **DONE（PR #44）** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
 | **E. Live Ticker Events schema probe / live archive validation** | **YES（次工程）** |
 | F. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
 | G. SecurityId issuance 実装 | **禁止** |

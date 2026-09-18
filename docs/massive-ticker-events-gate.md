@@ -247,7 +247,7 @@ Ticker Event **単独**では:
 
 | Option | Select? |
 | --- | --- |
-| A. Ticker Events forward archive PoC（raw + Fail-Closed validator；SecurityId なし） | **DONE** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
+| A. Ticker Events forward archive PoC（raw + Fail-Closed validator；SecurityId なし） | **DONE（PR #44）** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
 | **B. Live Ticker Events schema probe / live archive validation** | **YES（次工程候補）** |
 | C. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
 | D. 別 Gate | 不要（semantics は本文書で固定） |

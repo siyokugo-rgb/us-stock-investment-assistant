@@ -3,6 +3,7 @@
 **Date (UTC):** 2026-09-18
 **Baseline `origin/main` HEAD:** `fb19b2a968f233317a0f015fd5c09128dfde7c54`
 **Baseline `origin/main` tree:** `6b1346faa9794759ea49c87c54c6942407f5eeee`
+**PR #44:** Draft（本 PoC）
 **Semantics Gate:** [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md)（PR #43 MERGED）
 **Contract SoT:** [`forward-self-archive-design.md`](forward-self-archive-design.md)
 **Mode:** synthetic / offline QA first（**live API NOT YET RUN**）
