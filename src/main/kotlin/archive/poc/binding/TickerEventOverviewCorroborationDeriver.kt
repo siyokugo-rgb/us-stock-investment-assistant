@@ -16,7 +16,9 @@ import java.time.Instant
  * Corroborates Overview TICKER_CHANGE_CANDIDATE with Massive Ticker Events raw evidence.
  *
  * Does not invent candidates from Events. Does not sort/dedupe events or invent OLD/NEW.
- * Lookup id is provenance only. Event date ≠ knownAt / validity.
+ * PoC scope: ticker lookup only — lookupId must equal later provider ticker.
+ * Lookup equality = request provenance restriction ≠ SecurityId / identity proof.
+ * Event date ≠ knownAt / validity.
  */
 object TickerEventOverviewCorroborationDeriver {
     fun derive(
@@ -25,14 +27,8 @@ object TickerEventOverviewCorroborationDeriver {
         tickerEvents: ManifestRecord,
     ): TickerEventOverviewCorroborationEvidence {
         if (!isOverviewSource(overviewA) || !isOverviewSource(overviewB)) {
-            return unresolvedShell(
-                overviewA,
-                overviewB,
-                tickerEvents,
-                continuity =
-                    SecurityIdentityContinuityEvidenceDeriver.derive(overviewA, overviewB),
-                reason = TickerEventOverviewCorroborationReason.OVERVIEW_SOURCE_REQUIRED,
-            )
+            // Fail-closed without invoking continuity deriver or reading raw.
+            return unresolvedNonOverviewShell(overviewA, overviewB, tickerEvents)
         }
 
         val continuity =
@@ -72,6 +68,18 @@ object TickerEventOverviewCorroborationDeriver {
                     e,
                 )
             }
+
+        val secondTicker = continuity.secondProviderTicker!!
+        // PoC ticker-lookup scope: only archives whose request lookup equals later ticker.
+        // ≠ SecurityId equality. CUSIP / Composite FIGI lookup corroboration = deferred.
+        if (lookupId != secondTicker) {
+            return unresolvedFromContinuity(
+                continuity,
+                tickerEvents,
+                TickerEventOverviewCorroborationReason.EVENT_LOOKUP_NOT_LATER_TICKER,
+                lookupId = lookupId,
+            )
+        }
 
         val httpStatus =
             tickerEvents.httpStatus
@@ -113,7 +121,6 @@ object TickerEventOverviewCorroborationDeriver {
 
         val firstDate = continuity.firstProviderAsOfDate!!
         val secondDate = continuity.secondProviderAsOfDate!!
-        val secondTicker = continuity.secondProviderTicker!!
 
         val matches =
             validation.validatedEvents.filter { ev ->
@@ -187,14 +194,36 @@ object TickerEventOverviewCorroborationDeriver {
         return if (a.isAfter(b)) a else b
     }
 
-    private fun unresolvedShell(
+    /**
+     * Non-Overview inputs: UNRESOLVED / OVERVIEW_SOURCE_REQUIRED without calling
+     * [SecurityIdentityContinuityEvidenceDeriver], inventing temporal order, or reading raw.
+     */
+    private fun unresolvedNonOverviewShell(
         overviewA: ManifestRecord,
         overviewB: ManifestRecord,
         tickerEvents: ManifestRecord,
-        continuity: SecurityIdentityContinuityEvidence,
-        reason: TickerEventOverviewCorroborationReason,
     ): TickerEventOverviewCorroborationEvidence =
-        unresolvedFromContinuity(continuity, tickerEvents, reason)
+        TickerEventOverviewCorroborationEvidence(
+            firstOverviewArchiveId = overviewA.archiveId,
+            secondOverviewArchiveId = overviewB.archiveId,
+            tickerEventsArchiveId = tickerEvents.archiveId,
+            firstProviderTicker = null,
+            secondProviderTicker = null,
+            firstProviderAsOfDate = null,
+            secondProviderAsOfDate = null,
+            firstShareClassFigi = null,
+            secondShareClassFigi = null,
+            continuityStatus = SecurityIdentityContinuityStatus.UNRESOLVED,
+            tickerEventsLookupId = null,
+            matchedEventType = null,
+            matchedEventDate = null,
+            matchedEventTicker = null,
+            continuityEvidenceEligibleAt = null,
+            tickerEventsEligibilityBoundaryAt = null,
+            corroborationEligibleAt = null,
+            status = TickerEventOverviewCorroborationStatus.UNRESOLVED,
+            reason = TickerEventOverviewCorroborationReason.OVERVIEW_SOURCE_REQUIRED,
+        )
 
     private fun unresolvedFromContinuity(
         continuity: SecurityIdentityContinuityEvidence,

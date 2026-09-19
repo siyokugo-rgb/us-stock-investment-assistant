@@ -12,15 +12,13 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
-import kotlin.test.Test
+import kotlin.test.assertNull
+import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-
+import kotlin.test.Test
+import kotlin.test.BeforeTest
+import kotlin.test.AfterTest
 /**
  * Synthetic-first QA for [TickerEventOverviewCorroborationDeriver].
  * No live API. No SecurityId / knownAt / continuity rule changes.
@@ -389,14 +387,62 @@ class TickerEventOverviewCorroborationEvidenceTest {
                 events = listOf(Ev("ticker_change", "2025-01-21", "XYZ")),
             )
         val evidence = TickerEventOverviewCorroborationDeriver.derive(at, t2, events)
+        assertEquals(TickerEventOverviewCorroborationStatus.UNRESOLVED, evidence.status)
         assertEquals(
             TickerEventOverviewCorroborationReason.OVERVIEW_SOURCE_REQUIRED,
             evidence.reason,
         )
+        assertEquals(SecurityIdentityContinuityStatus.UNRESOLVED, evidence.continuityStatus)
+        assertNull(evidence.firstProviderTicker)
+        assertNull(evidence.secondProviderTicker)
+        assertNull(evidence.corroborationEligibleAt)
     }
 
     @Test
-    fun lookupIdNeedNotEqualSecondTickerWhenEventMatches() {
+    fun bothAllTickersWithoutRawIsUnresolvedOverviewSourceRequired() {
+        val at1 = allTickersShell("at-1", "SQ", "2025-01-17")
+        val at2 = allTickersShell("at-2", "XYZ", "2025-01-22")
+        val events =
+            eventsRecord(
+                lookupId = "XYZ",
+                events = listOf(Ev("ticker_change", "2025-01-21", "XYZ")),
+            )
+        // Must not invoke continuity deriver / parse raw — exception forbidden.
+        val evidence = TickerEventOverviewCorroborationDeriver.derive(at1, at2, events)
+        assertEquals(TickerEventOverviewCorroborationStatus.UNRESOLVED, evidence.status)
+        assertEquals(
+            TickerEventOverviewCorroborationReason.OVERVIEW_SOURCE_REQUIRED,
+            evidence.reason,
+        )
+        assertEquals(SecurityIdentityContinuityStatus.UNRESOLVED, evidence.continuityStatus)
+        assertNull(evidence.firstProviderTicker)
+        assertNull(evidence.secondProviderTicker)
+        assertNull(evidence.firstProviderAsOfDate)
+        assertNull(evidence.secondProviderAsOfDate)
+        assertNull(evidence.continuityEvidenceEligibleAt)
+        assertNull(evidence.corroborationEligibleAt)
+    }
+
+    @Test
+    fun lookupIdEqualSecondTickerWithValidEventIsCorroborated() {
+        val t1 = overview("ov-sq", "SQ", "2025-01-17", eligOv1)
+        val t2 = overview("ov-xyz", "XYZ", "2025-01-22", eligOv2)
+        val events =
+            eventsRecord(
+                lookupId = "XYZ",
+                events = listOf(Ev("ticker_change", "2025-01-21", "XYZ")),
+            )
+        val evidence = TickerEventOverviewCorroborationDeriver.derive(t1, t2, events)
+        assertEquals(
+            TickerEventOverviewCorroborationStatus.CORROBORATED_TICKER_CHANGE_CANDIDATE,
+            evidence.status,
+        )
+        assertEquals("XYZ", evidence.tickerEventsLookupId)
+        assertEquals(evidence.secondProviderTicker, evidence.tickerEventsLookupId)
+    }
+
+    @Test
+    fun compositeFigiLookupEvenWithMatchingEventIsUnresolved() {
         val t1 = overview("ov-sq", "SQ", "2025-01-17", eligOv1)
         val t2 = overview("ov-xyz", "XYZ", "2025-01-22", eligOv2)
         val events =
@@ -409,13 +455,31 @@ class TickerEventOverviewCorroborationEvidenceTest {
                     ),
             )
         val evidence = TickerEventOverviewCorroborationDeriver.derive(t1, t2, events)
+        assertEquals(TickerEventOverviewCorroborationStatus.UNRESOLVED, evidence.status)
         assertEquals(
-            TickerEventOverviewCorroborationStatus.CORROBORATED_TICKER_CHANGE_CANDIDATE,
-            evidence.status,
+            TickerEventOverviewCorroborationReason.EVENT_LOOKUP_NOT_LATER_TICKER,
+            evidence.reason,
         )
         assertEquals("BBG000BLNNH6", evidence.tickerEventsLookupId)
-        assertEquals("XYZ", evidence.matchedEventTicker)
-        assertTrue(evidence.tickerEventsLookupId != evidence.secondProviderTicker)
+        assertEquals("XYZ", evidence.secondProviderTicker)
+    }
+
+    @Test
+    fun earlierTickerLookupIsUnresolved() {
+        val t1 = overview("ov-sq", "SQ", "2025-01-17", eligOv1)
+        val t2 = overview("ov-xyz", "XYZ", "2025-01-22", eligOv2)
+        val events =
+            eventsRecord(
+                lookupId = "SQ",
+                events = listOf(Ev("ticker_change", "2025-01-21", "XYZ")),
+            )
+        val evidence = TickerEventOverviewCorroborationDeriver.derive(t1, t2, events)
+        assertEquals(TickerEventOverviewCorroborationStatus.UNRESOLVED, evidence.status)
+        assertEquals(
+            TickerEventOverviewCorroborationReason.EVENT_LOOKUP_NOT_LATER_TICKER,
+            evidence.reason,
+        )
+        assertEquals("SQ", evidence.tickerEventsLookupId)
     }
 
     @Test
@@ -453,6 +517,20 @@ class TickerEventOverviewCorroborationEvidenceTest {
         assertFalse(names.any { it.equals("validFrom", ignoreCase = true) })
         assertFalse(names.any { it.equals("validTo", ignoreCase = true) })
         assertFalse(names.any { it.contains("DailyPrice", ignoreCase = true) })
+    }
+
+    @Test
+    fun manualCorroboratedWithNullLookupIdIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validCorroboratedBase().copy(tickerEventsLookupId = null)
+        }
+    }
+
+    @Test
+    fun manualCorroboratedWithLookupIdNotEqualSecondTickerIsRejected() {
+        assertFailsWith<IllegalArgumentException> {
+            validCorroboratedBase().copy(tickerEventsLookupId = "BBG000BLNNH6")
+        }
     }
 
     @Test
@@ -578,6 +656,34 @@ class TickerEventOverviewCorroborationEvidenceTest {
         Files.write(path, body)
         return path
     }
+
+    private fun allTickersShell(
+        archiveId: String,
+        ticker: String,
+        date: String,
+    ): ManifestRecord =
+        ManifestRecord(
+            archiveId = archiveId,
+            domain = MassiveAllTickersArchiveClient.DOMAIN,
+            source = MassiveAllTickersArchiveClient.SOURCE,
+            requestKey =
+                MassiveAllTickersArchiveClient.requestKey(
+                    ticker = ticker,
+                    date = date,
+                    limit = 1,
+                ),
+            attemptedAt = Instant.parse("2026-09-10T09:00:00Z"),
+            attemptFinishedAt = Instant.parse("2026-09-10T09:00:30Z"),
+            fetchedAt = Instant.parse("2026-09-10T09:00:30Z"),
+            ingestedAt = Instant.parse("2026-09-10T09:01:00Z"),
+            httpStatus = 200,
+            transportStatus = TransportStatus.HTTP_RESPONSE,
+            observationStatus = ObservationStatus.OBSERVED,
+            eligibilityBoundaryAt = eligOv1,
+            // Missing / broken raw on purpose — must not be read for non-Overview.
+            rawPayloadHash = null,
+            rawPayloadUri = null,
+        )
 
     private fun overview(
         archiveId: String,

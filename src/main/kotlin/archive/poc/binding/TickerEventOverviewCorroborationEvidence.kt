@@ -14,7 +14,11 @@ import java.time.Instant
  * ≠ knownAt / identity validity / ticker validity.
  *
  * Event date window match ≠ effective-date proof ≠ OLD→NEW invention.
- * [tickerEventsLookupId] is request provenance only — ≠ SecurityId / second ticker identity.
+ *
+ * PoC scope: Ticker Events **ticker lookup only** —
+ * [tickerEventsLookupId] must equal [secondProviderTicker] for CORROBORATED.
+ * That equality is **request provenance restriction**, not SecurityId /
+ * Security identity proof. CUSIP / Composite FIGI lookup corroboration = deferred.
  */
 enum class TickerEventOverviewCorroborationStatus {
     CORROBORATED_TICKER_CHANGE_CANDIDATE,
@@ -28,6 +32,8 @@ enum class TickerEventOverviewCorroborationReason {
     EVENT_SOURCE_UNSUPPORTED,
     EVENT_RAW_VALIDATION_FAILED,
     EVENTS_EMPTY,
+    /** Events requestKey lookupId ≠ later Overview provider ticker (PoC ticker-lookup scope). */
+    EVENT_LOOKUP_NOT_LATER_TICKER,
     NO_EVENT_WINDOW_MATCH,
     EVENT_WINDOW_MATCH_AMBIGUOUS,
 }
@@ -43,7 +49,10 @@ data class TickerEventOverviewCorroborationEvidence(
     val firstShareClassFigi: String?,
     val secondShareClassFigi: String?,
     val continuityStatus: SecurityIdentityContinuityStatus,
-    /** Opaque Events requestKey lookup id — provenance only; ≠ SecurityId. */
+    /**
+     * Opaque Events requestKey lookup id — request provenance only; ≠ SecurityId.
+     * On CORROBORATED must equal [secondProviderTicker] (PoC ticker-lookup scope).
+     */
     val tickerEventsLookupId: String?,
     val matchedEventType: String?,
     val matchedEventDate: String?,
@@ -79,6 +88,13 @@ data class TickerEventOverviewCorroborationEvidence(
                 require(!matchedEventDate.isNullOrBlank())
                 require(!matchedEventTicker.isNullOrBlank())
                 require(matchedEventTicker == secondProviderTicker)
+                require(!tickerEventsLookupId.isNullOrBlank()) {
+                    "CORROBORATED requires nonblank tickerEventsLookupId"
+                }
+                require(tickerEventsLookupId == secondProviderTicker) {
+                    "CORROBORATED requires tickerEventsLookupId == secondProviderTicker " +
+                        "(PoC ticker-lookup provenance; ≠ SecurityId equality)"
+                }
                 require(
                     firstProviderAsOfDate < matchedEventDate!! &&
                         matchedEventDate <= secondProviderAsOfDate,

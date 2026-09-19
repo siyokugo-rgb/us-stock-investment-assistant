@@ -10,7 +10,9 @@
 | Gate | Status |
 | --- | --- |
 | Overview TICKER_CHANGE_CANDIDATE ↔ Events window corroboration（synthetic） | **PASS（本 PoC）** |
+| Ticker Events lookup scope = later ticker lookup only | **PASS（本 PoC）** |
 | Live corroboration validation | **NOT YET RUN** |
+| CUSIP / Composite FIGI lookup corroboration | **NO-GO / deferred** |
 | SecurityId / SecurityIdentifier / knownAt / validFrom·validTo | **NO-GO** |
 | Events-only ticker-change candidate invention | **NO-GO** |
 | DailyPrice / Real Backtest | **NO-GO** |
@@ -33,8 +35,8 @@ Events から ticker-change candidate 自体は **新規生成しない**。
 | Input | Allowed |
 | --- | --- |
 | Overview ↔ Overview | YES |
-| All Tickers | **NO**（`OVERVIEW_SOURCE_REQUIRED`） |
-| Ticker Events OBSERVED archive | YES（補助） |
+| All Tickers / 非 Overview | **NO**（`OVERVIEW_SOURCE_REQUIRED`；continuity deriver 未呼び出し・raw 未読込） |
+| Ticker Events OBSERVED archive | YES（補助；ticker lookup only） |
 
 Reuse（変更なし）:
 
@@ -56,8 +58,8 @@ Package: `archive.poc.binding`
 
 | Status | Meaning |
 | --- | --- |
-| `CORROBORATED_TICKER_CHANGE_CANDIDATE` | Overview TICKER_CHANGE_CANDIDATE + exactly one window match |
-| `UNRESOLVED` | それ以外（absence / ambiguous / non-candidate 等） |
+| `CORROBORATED_TICKER_CHANGE_CANDIDATE` | Overview TICKER_CHANGE_CANDIDATE + ticker-lookup provenance + exactly one window match |
+| `UNRESOLVED` | それ以外（absence / ambiguous / non-candidate / non-ticker lookup 等） |
 
 `CONFLICT` は今回追加しない（Events completeness/order/direction semantics 未確定）。
 
@@ -66,6 +68,10 @@ Package: `archive.poc.binding`
 既存 continuity candidate（first=earlier as-of, second=later）に対し:
 
 ```text
+Ticker Events lookup:
+  tickerEventsLookupId == secondProviderTicker
+  （ticker lookup のみ；CUSIP / Composite FIGI = deferred）
+
 event.type == ticker_change
 event.ticker == secondProviderTicker
 firstProviderAsOfDate < event.date <= secondProviderAsOfDate
@@ -75,7 +81,8 @@ Window: **`(T1, T2]`**
 
 | Match count | Result |
 | --- | --- |
-| 1 | CORROBORATED |
+| lookup ≠ later ticker | UNRESOLVED `EVENT_LOOKUP_NOT_LATER_TICKER` |
+| 1（かつ lookup == later ticker） | CORROBORATED |
 | 0 | UNRESOLVED `NO_EVENT_WINDOW_MATCH` |
 | >1 | UNRESOLVED `EVENT_WINDOW_MATCH_AMBIGUOUS`（dedupe 禁止） |
 
@@ -84,13 +91,36 @@ Window: **`(T1, T2]`**
 - event date = effective date 確定
 - event date = knownAt / validFrom / validTo
 - Events 配列順 → OLD/NEW
-- lookup id == second ticker（identity）
+- `tickerEventsLookupId == secondProviderTicker` = SecurityId / Security identity equality
 - Security continuity 確定
 
-### Lookup id
+### Lookup id（PoC scope）
 
-`tickerEventsLookupId` = requestKey provenance only。  
-`lookupId == secondProviderTicker` を要求しない（Ticker / CUSIP / Composite FIGI 非推測）。
+`tickerEventsLookupId` = requestKey provenance only。
+
+**Current PoC = ticker lookup only:**
+
+- corroboration へ進める最低条件: `tickerEventsLookupId == continuity.secondProviderTicker`
+- 不一致 → `UNRESOLVED` / `EVENT_LOOKUP_NOT_LATER_TICKER`
+- この equality は **request provenance restriction** のみ（later provider ticker を明示的に Ticker Events lookup へ使った archive だけを対象とする）
+- **≠** `lookupId == SecurityId` / `ticker == SecurityId` / Security identity proof
+
+**Deferred（namespace / granularity 安全化後の別工程）:**
+
+- CUSIP lookup による corroboration
+- Composite FIGI lookup による corroboration
+
+`CORROBORATED_TICKER_CHANGE_CANDIDATE` constructor は追加で:
+
+- `tickerEventsLookupId` nonblank
+- `tickerEventsLookupId == secondProviderTicker`
+
+を要求（同上・provenance restriction）。
+
+### Non-Overview fail-closed
+
+Overview 以外の入力は continuity deriver へ流さない。  
+直接 `UNRESOLVED` / `OVERVIEW_SOURCE_REQUIRED` shell（provider フィールド null・temporal invent なし・raw 未読込）。
 
 ### Eligibility
 
@@ -106,11 +136,13 @@ Window: **`(T1, T2]`**
 | Overview T1 | ticker=`SQ` date=`2025-01-17` same share_class |
 | Overview T2 | ticker=`XYZ` date=`2025-01-22` same share_class |
 | Continuity | `TICKER_CHANGE_CANDIDATE` |
+| Events lookup | `XYZ`（== secondProviderTicker） |
 | Events | `[ticker_change/2025-01-21/XYZ, ticker_change/2015-11-18/SQ]` |
 | Match | only `2025-01-21/XYZ` in `(2025-01-17, 2025-01-22]` |
 | Corroboration | **CORROBORATED_TICKER_CHANGE_CANDIDATE** |
 
-2015 SQ event / 配列位置は OLD 判定に未使用。
+2015 SQ event / 配列位置は OLD 判定に未使用。  
+lookup=`BBG…` / lookup=`SQ` は window match があっても `EVENT_LOOKUP_NOT_LATER_TICKER`。
 
 ---
 
@@ -131,6 +163,7 @@ Window: **`(T1, T2]`**
 | Live corroboration 未実施 | **Critical** |
 | SecurityId issuance | **Critical**（NO-GO） |
 | knownAt / PIT | **Critical**（event date ≠ knownAt） |
+| CUSIP / Composite FIGI lookup corroboration | **High**（deferred） |
 | Events completeness / direction semantics | **High** |
 | experimental Events schema drift | **High** |
 
