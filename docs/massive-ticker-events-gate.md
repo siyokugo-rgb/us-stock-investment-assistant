@@ -249,11 +249,11 @@ Ticker Event **単独**では:
 | --- | --- |
 | A. Ticker Events forward archive PoC（raw + Fail-Closed validator；SecurityId なし） | **DONE（PR #44）** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
 | B. Live Ticker Events schema probe / live archive validation | **DONE（PR #45）**（`LIVE_SCHEMA_VERIFIED`；XYZ × 1） |
-| **C. Ticker Events ↔ Overview share_class corroboration PoC** | **YES（次工程候補）** |
-| D. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
+| C. Ticker Events ↔ Overview share_class corroboration PoC | **DONE（PR #46）** → [`ticker-events-overview-corroboration-poc.md`](ticker-events-overview-corroboration-poc.md) |
+| **D. Live corroboration validation**（Overview dated + Events；無料枠） | **YES（次工程候補）** |
 | E. SecurityId / Ticker Events client の domain 直結実装 | **禁止** |
 
-**選定理由:** live schema/archive は検証済み。次は event + share_class の候補 corroboration。SecurityId 実装へは進まない。
+**選定理由:** synthetic corroboration は固定済み。blocking は実 archive での CORROBORATED 再現。
 
 ---
 

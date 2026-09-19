@@ -338,9 +338,10 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | C. Massive Ticker Events Semantics Gate Review | **DONE（PR #43）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
 | D. Ticker Events forward archive PoC | **DONE（PR #44）** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
 | E. Live Ticker Events schema probe / live archive validation | **DONE（PR #45）**（`LIVE_SCHEMA_VERIFIED`） |
-| **F. Ticker Events ↔ Overview share_class corroboration PoC** | **YES（次工程）** |
-| G. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
-| H. SecurityId issuance 実装 | **禁止** |
+| F. Ticker Events ↔ Overview share_class corroboration PoC | **DONE（PR #46）** → [`ticker-events-overview-corroboration-poc.md`](ticker-events-overview-corroboration-poc.md) |
+| **G. Live corroboration validation**（Overview dated + Events；無料枠） | **YES（次工程）** |
+| H. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
+| I. SecurityId issuance 実装 | **禁止** |
 
 **B（完了）:** 実 Massive 複数 provider as-of archive を既存 Fail-Closed deriver へ通し identity continuity candidate を再現（`LIVE_VERIFIED`）。SecurityId / knownAt / validity / DailyPrice / Backtest の GO ではない。
 
@@ -350,7 +351,9 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 
 **E（完了）:** XYZ × 1 live request；OBSERVED + integrity；SecurityId / knownAt / continuity なし。
 
-**F 選定理由:** live schema 済み。次は Gate 組み合わせ A の候補 corroboration。SecurityId 実装へ直接進まない。
+**F（完了）:** Overview TICKER_CHANGE_CANDIDATE × Events `(T1,T2]` later-ticker match（synthetic）。
+
+**G 選定理由:** synthetic corroboration 固定済み。次は実 archive での CORROBORATED 再現。SecurityId 実装へ直接進まない。
 
 ---
 
