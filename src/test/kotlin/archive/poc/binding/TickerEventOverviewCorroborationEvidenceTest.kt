@@ -661,8 +661,11 @@ class TickerEventOverviewCorroborationEvidenceTest {
         archiveId: String,
         ticker: String,
         date: String,
-    ): ManifestRecord =
-        ManifestRecord(
+    ): ManifestRecord {
+        // OBSERVED requires hash/uri on ManifestRecord, but file is absent/broken on purpose.
+        // Corroboration must not invoke continuity deriver or read this raw.
+        val missingUri = root.resolve("missing-$archiveId.raw").toString()
+        return ManifestRecord(
             archiveId = archiveId,
             domain = MassiveAllTickersArchiveClient.DOMAIN,
             source = MassiveAllTickersArchiveClient.SOURCE,
@@ -680,10 +683,10 @@ class TickerEventOverviewCorroborationEvidenceTest {
             transportStatus = TransportStatus.HTTP_RESPONSE,
             observationStatus = ObservationStatus.OBSERVED,
             eligibilityBoundaryAt = eligOv1,
-            // Missing / broken raw on purpose — must not be read for non-Overview.
-            rawPayloadHash = null,
-            rawPayloadUri = null,
+            rawPayloadHash = "b".repeat(64),
+            rawPayloadUri = missingUri,
         )
+    }
 
     private fun overview(
         archiveId: String,
