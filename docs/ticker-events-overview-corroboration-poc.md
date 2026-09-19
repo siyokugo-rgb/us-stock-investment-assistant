@@ -141,7 +141,7 @@ Window: **`(T1, T2]`**
 | Option | Select? |
 | --- | --- |
 | A. Live Ticker Events schema probe | **DONE（PR #45）** |
-| B. Ticker Events ↔ Overview share_class corroboration PoC（synthetic） | **DONE（本 PR）** |
+| B. Ticker Events ↔ Overview share_class corroboration PoC（synthetic） | **DONE（PR #46）** |
 | **C. Live corroboration validation**（Overview dated SQ/XYZ + Events XYZ；無料枠） | **YES** |
 | D. SecurityId issuance | **禁止** |
 
