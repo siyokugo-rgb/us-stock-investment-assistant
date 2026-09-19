@@ -72,6 +72,71 @@ class MassiveTickerEventsLiveArchivePocTest {
             MassiveTickerEventsLiveArchivePoc.classify(result),
         )
         assertFalse(MassiveTickerEventsLiveArchivePoc.isSchemaVerified(result))
+        assertTrue(MassiveTickerEventsLiveArchivePoc.isEmptyObservedVerified(result))
+    }
+
+    @Test
+    fun observedEmptyWithOkForObservedFalseIsLocalFailureNotEmptyObserved() {
+        val body =
+            """{"status":"OK","results":{"events":[]}}""".toByteArray(StandardCharsets.UTF_8)
+        val result =
+            observedResult(body, eventCount = 0).let { base ->
+                base.copy(
+                    validation =
+                        base.validation!!.copy(
+                            okForObserved = false,
+                            notes = "synthetic reject while OBSERVED fixture",
+                        ),
+                )
+            }
+        assertTrue(MassiveTickerEventsLiveArchivePoc.integrityOk(result))
+        assertFalse(MassiveTickerEventsLiveArchivePoc.isEmptyObservedVerified(result))
+        assertEquals(
+            MassiveTickerEventsLiveArchivePoc.LiveClassification.LIVE_LOCAL_FAILURE,
+            MassiveTickerEventsLiveArchivePoc.classify(result),
+        )
+    }
+
+    @Test
+    fun observedEmptyWithIngestNotSucceededIsLocalFailureNotEmptyObserved() {
+        val body =
+            """{"status":"OK","results":{"events":[]}}""".toByteArray(StandardCharsets.UTF_8)
+        val result = observedResult(body, eventCount = 0).copy(observedIngestSucceeded = false)
+        assertTrue(MassiveTickerEventsLiveArchivePoc.integrityOk(result))
+        assertFalse(MassiveTickerEventsLiveArchivePoc.isEmptyObservedVerified(result))
+        assertEquals(
+            MassiveTickerEventsLiveArchivePoc.LiveClassification.LIVE_LOCAL_FAILURE,
+            MassiveTickerEventsLiveArchivePoc.classify(result),
+        )
+    }
+
+    @Test
+    fun observedEmptyCountWithNonEmptyValidatedEventsIsLocalFailure() {
+        val body =
+            """{"status":"OK","results":{"events":[]}}""".toByteArray(StandardCharsets.UTF_8)
+        val result =
+            observedResult(body, eventCount = 0).let { base ->
+                base.copy(
+                    validation =
+                        base.validation!!.copy(
+                            eventCount = 0,
+                            validatedEvents =
+                                listOf(
+                                    MassiveTickerChangeRawEvidence(
+                                        type = "ticker_change",
+                                        date = "2025-01-21",
+                                        ticker = "XYZ",
+                                    ),
+                                ),
+                        ),
+                )
+            }
+        assertTrue(MassiveTickerEventsLiveArchivePoc.integrityOk(result))
+        assertFalse(MassiveTickerEventsLiveArchivePoc.isEmptyObservedVerified(result))
+        assertEquals(
+            MassiveTickerEventsLiveArchivePoc.LiveClassification.LIVE_LOCAL_FAILURE,
+            MassiveTickerEventsLiveArchivePoc.classify(result),
+        )
     }
 
     @Test

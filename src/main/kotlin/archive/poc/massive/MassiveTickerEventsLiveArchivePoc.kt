@@ -83,17 +83,31 @@ object MassiveTickerEventsLiveArchivePoc {
             ObservationStatus.LOCAL_ARCHIVE_FAILURE -> LiveClassification.LIVE_LOCAL_FAILURE
             ObservationStatus.MISSING -> LiveClassification.LIVE_LOCAL_FAILURE
             ObservationStatus.OBSERVED -> {
-                if (!integrityOk(result)) {
-                    LiveClassification.LIVE_LOCAL_FAILURE
-                } else if ((result.validation?.eventCount ?: -1) == 0) {
-                    LiveClassification.LIVE_EMPTY_OBSERVED
-                } else if (isSchemaVerified(result)) {
-                    LiveClassification.LIVE_SCHEMA_VERIFIED
-                } else {
-                    LiveClassification.LIVE_LOCAL_FAILURE
+                when {
+                    isEmptyObservedVerified(result) -> LiveClassification.LIVE_EMPTY_OBSERVED
+                    isSchemaVerified(result) -> LiveClassification.LIVE_SCHEMA_VERIFIED
+                    else -> LiveClassification.LIVE_LOCAL_FAILURE
                 }
             }
         }
+    }
+
+    /**
+     * OBSERVED + empty events only when ingest/validation/integrity are consistent.
+     * Contradictory OBSERVED states Fail-Close to [LiveClassification.LIVE_LOCAL_FAILURE]
+     * via [classify] — never elevate to [LiveClassification.LIVE_EMPTY_OBSERVED].
+     */
+    fun isEmptyObservedVerified(result: MassiveTickerEventsArchiveResult): Boolean {
+        val r = result.record
+        val v = result.validation ?: return false
+        if (r.observationStatus != ObservationStatus.OBSERVED) return false
+        if (!result.observedIngestSucceeded) return false
+        if (!v.okForObserved) return false
+        if (v.eventCount != 0) return false
+        if (v.validatedEvents.isNotEmpty()) return false
+        if (r.rawPayloadHash.isNullOrBlank()) return false
+        if (r.rawPayloadUri.isNullOrBlank()) return false
+        return integrityOk(result)
     }
 
     fun isSchemaVerified(result: MassiveTickerEventsArchiveResult): Boolean {
