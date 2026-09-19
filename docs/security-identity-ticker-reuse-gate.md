@@ -339,7 +339,7 @@ Security identity Gate と PIT / Temporal Gate を混ぜない。
 | D. Ticker Events forward archive PoC | **DONE（PR #44）** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
 | E. Live Ticker Events schema probe / live archive validation | **DONE（PR #45）**（`LIVE_SCHEMA_VERIFIED`） |
 | F. Ticker Events ↔ Overview share_class corroboration PoC | **DONE（PR #46）** → [`ticker-events-overview-corroboration-poc.md`](ticker-events-overview-corroboration-poc.md) |
-| **G. Live corroboration validation**（Overview dated + Events；無料枠） | **YES（次工程）** |
+| **G. Live corroboration validation**（Overview dated + Events；無料枠） | **IN PROGRESS（PR #47 Draft；runner PASS / provider NOT RUN — MASSIVE_API_KEY=NOT SET）** |
 | H. FIGI consistency PoC（Massive↔OpenFIGI） | 後続 |
 | I. SecurityId issuance 実装 | **禁止** |
 

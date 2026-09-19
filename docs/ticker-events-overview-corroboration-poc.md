@@ -1,17 +1,17 @@
 # Ticker Events ↔ Overview share_class corroboration PoC
 
 **Date (UTC):** 2026-09-19  
-**Baseline `origin/main` HEAD:** `2559ce113df01ad9e3514f79d2dcc39dc3f55bfe`  
-**Baseline `origin/main` tree:** `277a12942255c1756465203596975f926e3d1560`  
-**PR #45:** MERGED（Ticker Events live schema probe `LIVE_SCHEMA_VERIFIED`）  
-**PR #46:** Draft（本 PoC）  
-**Mode:** synthetic / offline first（**live API NOT RUN；request 禁止**）
+**Baseline `origin/main` HEAD:** `b60878600baa434245b242fbdddc8b2db1700226`（PR #46 MERGED）  
+**PR #46:** MERGED（synthetic corroboration PoC）  
+**PR #47:** Draft（live corroboration validation runner）  
+**Mode:** synthetic PASS + live runner ready（**this environment: MASSIVE_API_KEY=NOT SET → provider request 0**）
 
 | Gate | Status |
 | --- | --- |
-| Overview TICKER_CHANGE_CANDIDATE ↔ Events window corroboration（synthetic） | **PASS（本 PoC）** |
-| Ticker Events lookup scope = later ticker lookup only | **PASS（本 PoC）** |
-| Live corroboration validation | **NOT YET RUN** |
+| Overview TICKER_CHANGE_CANDIDATE ↔ Events window corroboration（synthetic） | **PASS（PR #46）** |
+| Ticker Events lookup scope = later ticker lookup only | **PASS（PR #46）** |
+| Live corroboration validation runner / offline QA | **PASS（PR #47）** |
+| Live provider corroboration（SQ/XYZ + Events XYZ） | **NOT RUN**（`MASSIVE_API_KEY=NOT SET`） |
 | CUSIP / Composite FIGI lookup corroboration | **NO-GO / deferred** |
 | SecurityId / SecurityIdentifier / knownAt / validFrom·validTo | **NO-GO** |
 | Events-only ticker-change candidate invention | **NO-GO** |
@@ -44,6 +44,7 @@ Reuse（変更なし）:
 - `MassiveTickerEventsArchiveValidator` / RequestKey
 - `MassiveTickerOverviewArchiveValidator` / RequestKey
 - `ManifestRecord` / `Sha256Hex`
+- Overview / Events ForwardArchiveService + clients
 
 ---
 
@@ -53,6 +54,7 @@ Package: `archive.poc.binding`
 
 - `TickerEventOverviewCorroborationEvidence`
 - `TickerEventOverviewCorroborationDeriver`
+- `TickerEventOverviewCorroborationLivePoc`（live runner）
 
 ### Status
 
@@ -102,25 +104,14 @@ Window: **`(T1, T2]`**
 
 - corroboration へ進める最低条件: `tickerEventsLookupId == continuity.secondProviderTicker`
 - 不一致 → `UNRESOLVED` / `EVENT_LOOKUP_NOT_LATER_TICKER`
-- この equality は **request provenance restriction** のみ（later provider ticker を明示的に Ticker Events lookup へ使った archive だけを対象とする）
-- **≠** `lookupId == SecurityId` / `ticker == SecurityId` / Security identity proof
+- この equality は **request provenance restriction** のみ
+- **≠** SecurityId / Security identity proof
 
-**Deferred（namespace / granularity 安全化後の別工程）:**
-
-- CUSIP lookup による corroboration
-- Composite FIGI lookup による corroboration
-
-`CORROBORATED_TICKER_CHANGE_CANDIDATE` constructor は追加で:
-
-- `tickerEventsLookupId` nonblank
-- `tickerEventsLookupId == secondProviderTicker`
-
-を要求（同上・provenance restriction）。
+**Deferred:** CUSIP / Composite FIGI lookup corroboration（namespace 安全化後）
 
 ### Non-Overview fail-closed
 
-Overview 以外の入力は continuity deriver へ流さない。  
-直接 `UNRESOLVED` / `OVERVIEW_SOURCE_REQUIRED` shell（provider フィールド null・temporal invent なし・raw 未読込）。
+Overview 以外 → `UNRESOLVED` / `OVERVIEW_SOURCE_REQUIRED`（continuity deriver 未呼び出し・raw 未読込）。
 
 ### Eligibility
 
@@ -141,18 +132,50 @@ Overview 以外の入力は continuity deriver へ流さない。
 | Match | only `2025-01-21/XYZ` in `(2025-01-17, 2025-01-22]` |
 | Corroboration | **CORROBORATED_TICKER_CHANGE_CANDIDATE** |
 
-2015 SQ event / 配列位置は OLD 判定に未使用。  
-lookup=`BBG…` / lookup=`SQ` は window match があっても `EVENT_LOOKUP_NOT_LATER_TICKER`。
+---
+
+## Live runner
+
+| Item | Value |
+| --- | --- |
+| Entry | `archive.poc.binding.TickerEventOverviewCorroborationLivePoc` |
+| Gradle | `./gradlew --no-daemon -q massiveTickerEventsOverviewLiveCorroborationPoc` |
+| T1 | Overview `SQ` / `2025-01-17` |
+| T2 | Overview `XYZ` / `2025-01-22` |
+| Events | lookupId=`XYZ` |
+| Max requests | **3**（retry 禁止・穴埋め禁止） |
+| Offline QA | 9 classification tests |
+
+### Live classification
+
+| Class | Meaning |
+| --- | --- |
+| `LIVE_CORROBORATED` | 3× OBSERVED + ingest OK + continuity `TICKER_CHANGE_CANDIDATE` + corroboration `CORROBORATED_*` |
+| `LIVE_UNRESOLVED` | 3 archive 成立だが corroboration `UNRESOLVED`（reason そのまま） |
+| `LIVE_PROVIDER_FAILURE` | いずれか `PROVIDER_FAILURE` |
+| `LIVE_VALIDATION_REJECTED` | いずれか `REJECTED_VALIDATION` |
+| `LIVE_LOCAL_FAILURE` | local/integrity/deriver exception 等 |
+| `LIVE_UNVERIFIED` | API key 無し等で provider request 未実施 |
+
+Claim boundary（`LIVE_CORROBORATED` でも）: ≠ SecurityId / knownAt / validFrom·validTo / DailyPrice / Backtest GO。
 
 ---
 
-## Live validation status
+## Latest live validation
 
-| Claim | Status |
+| Item | Value |
 | --- | --- |
-| Synthetic corroboration semantics | **PASS（本 PoC）** |
-| Live Overview+Events corroboration | **NOT YET RUN** |
-| Provider request this PR | **禁止** |
+| executedAt (UTC) | **NOT RUN**（2026-09-19；this Cloud Agent environment） |
+| MASSIVE_API_KEY | **NOT SET**（値禁止；値未保有） |
+| request count | **0** |
+| T1 / T2 / Events | not requested |
+| continuity / corroboration | n/a |
+| liveClassification | would be `LIVE_UNVERIFIED` if runner invoked without key |
+| raw SHA recheck | n/a |
+| raw Git 未収録 | n/a（provider raw 未取得） |
+| provider failure | n/a |
+
+**Blocking:** `MASSIVE_API_KEY` を SET した環境で同 runner を **1 回のみ**実行する。
 
 ---
 
@@ -160,7 +183,7 @@ lookup=`BBG…` / lookup=`SQ` は window match があっても `EVENT_LOOKUP_NOT
 
 | Item | Severity |
 | --- | --- |
-| Live corroboration 未実施 | **Critical** |
+| Live provider corroboration 未実施（API key 不在） | **Critical** |
 | SecurityId issuance | **Critical**（NO-GO） |
 | knownAt / PIT | **Critical**（event date ≠ knownAt） |
 | CUSIP / Composite FIGI lookup corroboration | **High**（deferred） |
@@ -175,10 +198,11 @@ lookup=`BBG…` / lookup=`SQ` は window match があっても `EVENT_LOOKUP_NOT
 | --- | --- |
 | A. Live Ticker Events schema probe | **DONE（PR #45）** |
 | B. Ticker Events ↔ Overview share_class corroboration PoC（synthetic） | **DONE（PR #46）** |
-| **C. Live corroboration validation**（Overview dated SQ/XYZ + Events XYZ；無料枠） | **YES** |
-| D. SecurityId issuance | **禁止** |
+| C. Live corroboration runner / offline QA | **DONE（PR #47 Draft；key 未設定で provider 未実行）** |
+| **D. Re-run live corroboration with MASSIVE_API_KEY set**（SQ/XYZ + Events XYZ；1 回・max 3） | **YES** |
+| E. SecurityId issuance | **禁止** |
 
-選定理由: synthetic Fail-Closed は固定済み。blocking は実 archive での CORROBORATED 再現。
+選定理由: runner は固定済み。blocking は key 付き環境での実 CORROBORATED 再現。
 
 ---
 
@@ -193,7 +217,7 @@ lookup=`BBG…` / lookup=`SQ` は window match があっても `EVENT_LOOKUP_NOT
 
 ## Merge advice
 
-- Draft PR としてレビュー可
+- Draft PR #47 としてレビュー可
 - **Ready / merge はユーザー指示まで禁止**
-- live API を本 PR で実行しない
+- live API は key SET 環境で 1 回のみ（本環境では未実施）
 - 本文書は SecurityId / knownAt / continuity GO の許可書ではない

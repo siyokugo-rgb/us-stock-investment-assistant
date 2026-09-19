@@ -283,7 +283,7 @@ SecurityId issuance / SecurityIdentifier / knownAt / validFrom·validTo / identi
 | C. Ticker Events forward archive PoC | **DONE（PR #44）** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
 | D. Live Ticker Events schema probe / live archive validation | **DONE（PR #45）**（`LIVE_SCHEMA_VERIFIED`） |
 | E. Ticker Events ↔ Overview share_class corroboration PoC | **DONE（PR #46）** → [`ticker-events-overview-corroboration-poc.md`](ticker-events-overview-corroboration-poc.md) |
-| **F. Live corroboration validation**（Overview dated + Events；無料枠） | **YES（次工程）** |
+| **F. Live corroboration validation**（Overview dated + Events；無料枠） | **IN PROGRESS（PR #47 Draft；runner PASS / provider NOT RUN — MASSIVE_API_KEY=NOT SET）** |
 | G. Massive↔OpenFIGI FIGI consistency PoC | 後続 |
 | H. Cross-source Overview↔All Tickers continuity Gate | 別軸 |
 | I. SecurityId issuance 実装 | **禁止**（Critical NO-GO のまま） |
