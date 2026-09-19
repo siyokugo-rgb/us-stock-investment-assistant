@@ -127,7 +127,7 @@ class TickerEventOverviewCorroborationLivePocTest {
     }
 
     @Test
-    fun defaultsAreFixedFreeTiercope() {
+    fun defaultsAreFixedFreeTierScope() {
         assertEquals("SQ", TickerEventOverviewCorroborationLivePoc.DEFAULT_T1_TICKER)
         assertEquals("2025-01-17", TickerEventOverviewCorroborationLivePoc.DEFAULT_T1_DATE)
         assertEquals("XYZ", TickerEventOverviewCorroborationLivePoc.DEFAULT_T2_TICKER)
