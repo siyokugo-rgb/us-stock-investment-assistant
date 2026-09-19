@@ -1,17 +1,18 @@
 # Massive Ticker Events Forward Archive PoC
 
 **Date (UTC):** 2026-09-18
-**Baseline `origin/main` HEAD:** `fb19b2a968f233317a0f015fd5c09128dfde7c54`
-**Baseline `origin/main` tree:** `6b1346faa9794759ea49c87c54c6942407f5eeee`
-**PR #44:** Draft（本 PoC）
+**Baseline `origin/main` HEAD（archive PoC）:** `fb19b2a968f233317a0f015fd5c09128dfde7c54`
+**Live probe base main:** `f4ba15f85b99fe995c5af94af07f7570becc683a`（PR #44 MERGED）
+**PR #45:** Draft（live schema probe）
+**PR #44:** MERGED（offline archive）
 **Semantics Gate:** [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md)（PR #43 MERGED）
 **Contract SoT:** [`forward-self-archive-design.md`](forward-self-archive-design.md)
-**Mode:** synthetic / offline QA first（**live API NOT YET RUN**）
+**Mode:** synthetic PASS + live schema probe **LIVE_SCHEMA_VERIFIED**（SecurityId / knownAt / continuity GO ではない）
 
 | Gate | Status |
 | --- | --- |
-| Ticker Events forward raw archive boundary（synthetic） | **PASS（本 PoC）** |
-| Live schema probe / live archive validation | **NOT YET RUN** |
+| Ticker Events forward raw archive boundary（synthetic） | **PASS（PR #44）** |
+| Live schema probe / live archive validation | **LIVE_SCHEMA_VERIFIED**（XYZ × 1） |
 | Security continuity / SecurityId / knownAt / validity | **NO-GO** |
 | DailyPrice.currency / Real Backtest | **NO-GO** |
 | Ticker Events client domain adoption | **NO-GO** |
@@ -141,7 +142,9 @@ notes 最低限: raw evidence only / lookup id ≠ SecurityId / ticker_change.ti
 | `MassiveTickerEventsArchiveValidator.kt` | Fail-Closed + raw evidence DTO |
 | `MassiveTickerEventsForwardArchiveService.kt` | archive orchestration |
 
-Live runner: **未作成**（offline 境界監査後に別ステップ）。
+- Live runner: `MassiveTickerEventsLiveArchivePoc` / Gradle `massiveTickerEventsForwardArchivePoc`
+- Default lookup id: `XYZ`（1 request）
+- Live validation: **LIVE_SCHEMA_VERIFIED**（下記）
 
 ---
 
@@ -157,9 +160,41 @@ Fixture: `massive-ticker-events-meta-sanitized.json`（**synthetic / sanitized /
 
 | Claim | Status |
 | --- | --- |
-| Live schema probe | **NOT YET RUN** |
-| Live archive validation | **NOT YET RUN** |
-| `MASSIVE_API_KEY` used in this revision | **No**（SET でも request 禁止） |
+| Live schema probe | **LIVE_SCHEMA_VERIFIED**（下記 Latest live attempt） |
+| Live archive validation | **PASS（1 request / XYZ）** |
+| Continuity deriver connection | **NO**（未接続） |
+| SecurityId / knownAt / OLD→NEW invention | **NO-GO 維持** |
+
+### Latest live attempt
+
+| Field | Value |
+| --- | --- |
+| executedAt (UTC) | `2026-09-18T07:50:58Z`（fetchedAt / ingestedAt 近傍） |
+| `MASSIVE_API_KEY` | **SET**（値は記録しない） |
+| lookup id | `XYZ`（opaque；≠ SecurityId） |
+| request count | **1**（retry なし；control ticker なし） |
+| requestKey | `GET\|/vX/reference/tickers/XYZ/events\|types=ticker_change` |
+| httpStatus | `200` |
+| observationStatus | `OBSERVED` |
+| observedIngestSucceeded | `true` |
+| eventCount | `2` |
+| validatedEvents（raw order） | `[0] type=ticker_change date=2025-01-21 ticker=XYZ`；`[1] type=ticker_change date=2015-11-18 ticker=SQ` |
+| liveClassification | **LIVE_SCHEMA_VERIFIED** |
+| rawPayloadHash | `19898be5cdf5dd24dcd0a1c0c921d2360ad57e870eacc0c1664f6d6ae35bce70` |
+| SHA-256 re-verify | **MATCH**（disk bytes == manifest hash） |
+| eligibilityBoundaryAt | `2026-09-18T07:50:58.867024101Z`（`ingestedAt`；event date へ backdate なし） |
+| provider failure / 403 / 429 | **なし** |
+| live raw / manifest | **Git 未収録**（`archive-runtime` gitignored） |
+| root keys observed | `request_id`, `results`, `status` |
+| results keys observed | `cik`, `composite_figi`, `events`, `name`（`cik`/`composite_figi` は sample 外；business 未使用） |
+
+**意味境界（維持）:**
+
+- event `date` ≠ `knownAt` / `validFrom` / `validTo`
+- lookup id ≠ SecurityId；`ticker_change.ticker` ≠ SecurityId
+- OLD→NEW 非発明；raw 順保存；sort/dedupe なし
+- continuity / SecurityId issuance **なし**
+- 外部資料上の SQ→XYZ effective（2025-01-21）と Massive `date` が一致しても、`date`→`knownAt` 転用 **禁止**
 
 ---
 
@@ -171,9 +206,9 @@ Fixture: `massive-ticker-events-meta-sanitized.json`（**synthetic / sanitized /
 | DailyPrice / Real Backtest | **Critical**（NO-GO） |
 | knownAt / PIT | **Critical**（event date / fetch ≠ knownAt） |
 | experimental schema / version change | **High** |
-| event-inner optionality / empty meaning / completeness | **High**（UNKNOWN） |
-| Live schema probe 未実施 | **High** |
-| Basic 2-year history | **High**（無料前提制約） |
+| event-inner optionality / empty meaning / completeness | **High**（UNKNOWN；live 1 件で解消しない） |
+| Continuity deriver ↔ Ticker Events corroboration | **High**（未接続） |
+| Basic 2-year history vs older events 出現 | **High**（観測事実；プラン意味の断定禁止） |
 
 ---
 
@@ -181,12 +216,12 @@ Fixture: `massive-ticker-events-meta-sanitized.json`（**synthetic / sanitized /
 
 | Option | Select? |
 | --- | --- |
-| **A. Live Ticker Events schema probe / live archive validation**（max 少数 request；mock 禁止） | **YES（次工程候補）** |
-| B. Continuity deriver ↔ Ticker Events corroboration | 後続 |
+| A. Live Ticker Events schema probe / live archive validation | **DONE（PR #45）**（`LIVE_SCHEMA_VERIFIED`；XYZ × 1 request） |
+| **B. Ticker Events ↔ Overview share_class corroboration PoC**（TICKER_CHANGE_CANDIDATE；SecurityId なし） | **YES（次工程候補）** |
 | C. FIGI consistency PoC | 別軸 |
 | D. SecurityId issuance | **禁止** |
 
-選定理由: offline raw/validator 境界は本 PoC で固定。blocking は experimental live shape の実測。
+選定理由: live schema/archive 境界は検証済み。次は Gate 組み合わせ A（event + share_class）の **候補** corroboration。SecurityId / knownAt へは進まない。
 
 ---
 

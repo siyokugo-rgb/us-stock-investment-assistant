@@ -139,3 +139,15 @@ tasks.register<JavaExec>("massiveSecurityIdentityContinuityLivePoc") {
     mainClass.set("archive.poc.binding.MassiveSecurityIdentityContinuityLivePocKt")
     isIgnoreExitValue = true
 }
+
+// Live Massive Ticker Events schema probe / archive validation. Requires MASSIVE_API_KEY else LIVE_UNVERIFIED.
+// Default: 1 request (lookup id XYZ). No mock; no SecurityId/knownAt/continuity.
+tasks.register<JavaExec>("massiveTickerEventsForwardArchivePoc") {
+    group = "verification"
+    description =
+        "Run live Massive Ticker Events forward archive schema probe " +
+            "(Fail-Closed; default XYZ 1 request; no SecurityId/knownAt/OLD-NEW/continuity; no mock)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("archive.poc.massive.MassiveTickerEventsLiveArchivePocKt")
+    isIgnoreExitValue = true
+}
