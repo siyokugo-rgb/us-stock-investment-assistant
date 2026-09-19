@@ -217,11 +217,11 @@ Fixture: `massive-ticker-events-meta-sanitized.json`（**synthetic / sanitized /
 | Option | Select? |
 | --- | --- |
 | A. Live Ticker Events schema probe / live archive validation | **DONE（PR #45）**（`LIVE_SCHEMA_VERIFIED`；XYZ × 1 request） |
-| **B. Ticker Events ↔ Overview share_class corroboration PoC**（TICKER_CHANGE_CANDIDATE；SecurityId なし） | **YES（次工程候補）** |
-| C. FIGI consistency PoC | 別軸 |
+| B. Ticker Events ↔ Overview share_class corroboration PoC（TICKER_CHANGE_CANDIDATE；SecurityId なし） | **DONE** → [`ticker-events-overview-corroboration-poc.md`](ticker-events-overview-corroboration-poc.md) |
+| **C. Live corroboration validation**（Overview dated + Events；無料枠） | **YES（次工程候補）** |
 | D. SecurityId issuance | **禁止** |
 
-選定理由: live schema/archive 境界は検証済み。次は Gate 組み合わせ A（event + share_class）の **候補** corroboration。SecurityId / knownAt へは進まない。
+選定理由: synthetic corroboration は固定済み。blocking は実 archive での CORROBORATED 再現。
 
 ---
 

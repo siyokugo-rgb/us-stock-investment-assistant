@@ -282,12 +282,13 @@ SecurityId issuance / SecurityIdentifier / knownAt / validFrom·validTo / identi
 | B. Massive Ticker Events Semantics Gate Review | **DONE（PR #43）** → [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md) |
 | C. Ticker Events forward archive PoC | **DONE（PR #44）** → [`massive-ticker-events-forward-archive-poc.md`](massive-ticker-events-forward-archive-poc.md) |
 | D. Live Ticker Events schema probe / live archive validation | **DONE（PR #45）**（`LIVE_SCHEMA_VERIFIED`） |
-| **E. Ticker Events ↔ Overview share_class corroboration PoC** | **YES（次工程）** |
-| F. Massive↔OpenFIGI FIGI consistency PoC | 後続 |
-| G. Cross-source Overview↔All Tickers continuity Gate | 別軸 |
-| H. SecurityId issuance 実装 | **禁止**（Critical NO-GO のまま） |
+| E. Ticker Events ↔ Overview share_class corroboration PoC | **DONE** → [`ticker-events-overview-corroboration-poc.md`](ticker-events-overview-corroboration-poc.md) |
+| **F. Live corroboration validation**（Overview dated + Events；無料枠） | **YES（次工程）** |
+| G. Massive↔OpenFIGI FIGI consistency PoC | 後続 |
+| H. Cross-source Overview↔All Tickers continuity Gate | 別軸 |
+| I. SecurityId issuance 実装 | **禁止**（Critical NO-GO のまま） |
 
-選定理由: live Ticker Events schema/archive は検証済み。次は event + share_class 候補 corroboration。SecurityId 実装へ直接進まない。
+選定理由: synthetic corroboration は固定済み。blocking は実 archive での CORROBORATED 再現。SecurityId 実装へ直接進まない。
 
 ---
 
@@ -295,6 +296,7 @@ SecurityId issuance / SecurityIdentifier / knownAt / validFrom·validTo / identi
 
 - [`security-identity-ticker-reuse-gate.md`](security-identity-ticker-reuse-gate.md)
 - [`massive-ticker-events-gate.md`](massive-ticker-events-gate.md)
+- [`ticker-events-overview-corroboration-poc.md`](ticker-events-overview-corroboration-poc.md)
 - [`data-contract.md`](data-contract.md)
 - [`massive-ticker-overview-forward-archive-poc.md`](massive-ticker-overview-forward-archive-poc.md)
 - [`massive-all-tickers-forward-archive-poc.md`](massive-all-tickers-forward-archive-poc.md)
