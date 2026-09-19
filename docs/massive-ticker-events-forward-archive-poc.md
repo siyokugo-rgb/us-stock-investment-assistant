@@ -217,7 +217,7 @@ Fixture: `massive-ticker-events-meta-sanitized.json`（**synthetic / sanitized /
 | Option | Select? |
 | --- | --- |
 | A. Live Ticker Events schema probe / live archive validation | **DONE（PR #45）**（`LIVE_SCHEMA_VERIFIED`；XYZ × 1 request） |
-| B. Ticker Events ↔ Overview share_class corroboration PoC（TICKER_CHANGE_CANDIDATE；SecurityId なし） | **DONE** → [`ticker-events-overview-corroboration-poc.md`](ticker-events-overview-corroboration-poc.md) |
+| B. Ticker Events ↔ Overview share_class corroboration PoC（TICKER_CHANGE_CANDIDATE；SecurityId なし） | **DONE（PR #46）** → [`ticker-events-overview-corroboration-poc.md`](ticker-events-overview-corroboration-poc.md) |
 | **C. Live corroboration validation**（Overview dated + Events；無料枠） | **YES（次工程候補）** |
 | D. SecurityId issuance | **禁止** |
 

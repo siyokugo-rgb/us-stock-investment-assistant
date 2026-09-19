@@ -4,6 +4,7 @@
 **Baseline `origin/main` HEAD:** `2559ce113df01ad9e3514f79d2dcc39dc3f55bfe`  
 **Baseline `origin/main` tree:** `277a12942255c1756465203596975f926e3d1560`  
 **PR #45:** MERGED（Ticker Events live schema probe `LIVE_SCHEMA_VERIFIED`）  
+**PR #46:** Draft（本 PoC）  
 **Mode:** synthetic / offline first（**live API NOT RUN；request 禁止**）
 
 | Gate | Status |
