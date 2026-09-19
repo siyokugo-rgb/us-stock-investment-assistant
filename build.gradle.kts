@@ -151,3 +151,15 @@ tasks.register<JavaExec>("massiveTickerEventsForwardArchivePoc") {
     mainClass.set("archive.poc.massive.MassiveTickerEventsLiveArchivePocKt")
     isIgnoreExitValue = true
 }
+
+// Live Ticker Events ↔ Overview corroboration validation. Requires MASSIVE_API_KEY else LIVE_UNVERIFIED.
+// Fixed free-tier: Overview SQ@2025-01-17 + XYZ@2025-01-22 + Events XYZ (max 3 requests; no retry).
+tasks.register<JavaExec>("massiveTickerEventsOverviewLiveCorroborationPoc") {
+    group = "verification"
+    description =
+        "Run live Ticker Events ↔ Overview corroboration validation " +
+            "(Fail-Closed; SQ/XYZ Overview + Events XYZ; max 3 requests; no SecurityId/knownAt/DailyPrice; no mock)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("archive.poc.binding.TickerEventOverviewCorroborationLivePocKt")
+    isIgnoreExitValue = true
+}
